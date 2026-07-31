@@ -1,0 +1,23 @@
+plugins/kiosk-watch/README.md
+  s_7021c90b94d92f::t_5b5d342597468b 3-59,63-80,82-84,86,91-93,95,97-98,100,106,112,118,120,124-131,133-138,140,142-146,148-151,153-217,219,222-228,231-232
+plugins/kiosk-attest/README.md
+  s_7021c90b94d92f::t_a09c9843aadc87 3-5,7-10,12-13,15,17,19-55,57-64,66,68-75,77-82,84-86,88,93-95,110-114,116,120,122,124-125,128-130,132,134,136-143,145-148,150-235,237,239-250
+plugins/kiosk-charge/README.md
+  s_7021c90b94d92f::t_7a769e5c599d2f 3-50,54-56,59,61,63-94,100,108,110-113,115,117-121,123-125,127,129,131-138,140-143,145-214,220-222
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "bacfdda36e06536352d46f9ecd8746365f3adf49",
+  "prompts": {},
+  "sessions": {
+    "s_7021c90b94d92f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fddfcab9-3c8b-40b7-939f-5b27c022cdb4",
+        "model": "claude-opus-5"
+      },
+      "human_author": "sushant-vyapar <sushant.jain@vyapar.com>"
+    }
+  }
+}
