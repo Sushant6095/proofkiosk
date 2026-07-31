@@ -1,0 +1,24 @@
+LICENSE-MIT
+  s_7021c90b94d92f::t_546025544e9310 1-21
+.gitignore
+  s_7021c90b94d92f::t_84fd89060c5ca0 3-7
+  s_7021c90b94d92f::t_81db6d1b5922ec 1-2
+LICENSE-APACHE
+  s_7021c90b94d92f::t_0157958390c050 1-202
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "f5a166da6b0c89c3b2c062332376d280535ded7c",
+  "prompts": {},
+  "sessions": {
+    "s_7021c90b94d92f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fddfcab9-3c8b-40b7-939f-5b27c022cdb4",
+        "model": "claude-opus-5"
+      },
+      "human_author": "sushant-vyapar <sushant.jain@vyapar.com>"
+    }
+  }
+}
