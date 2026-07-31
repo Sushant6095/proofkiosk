@@ -25,7 +25,7 @@ Physical pin numbers, BCM in parentheses. This is the mapping the SOPs and
 | Signal | Pi pin | BCM | Goes to |
 |---|---|---|---|
 | Relay VCC | 2 | — | 5 V |
-| Relay IN | 12 | GPIO18 | Relay control input |
+| Relay IN | 11 | GPIO17 | Relay control input |
 | Relay GND | 6 | — | Ground |
 | BME280 VIN | 1 | — | 3.3 V (**not** 5 V) |
 | BME280 GND | 9 | — | Ground |
@@ -37,7 +37,7 @@ Physical pin numbers, BCM in parentheses. This is the mapping the SOPs and
                    ┌───────────────┐
       5 V  pin 2 ──┤               ├── pin 1  3.3 V ──► BME280 VIN
                    │               │
-   GPIO18 pin 12 ──┤               ├── pin 3  GPIO2 ──► BME280 SDA
+   GPIO17 pin 11 ──┤               ├── pin 3  GPIO2 ──► BME280 SDA
                    │               │
       GND  pin 6 ──┤               ├── pin 5  GPIO3 ──► BME280 SCL
                    └───────────────┘
@@ -48,7 +48,7 @@ Physical pin numbers, BCM in parentheses. This is the mapping the SOPs and
               │  VCC  IN  GND          │        │
               └───┬────┬────┬──────────┘        │
                   │    │    │                   ▼
-                 5V  GPIO18 GND        ┌──────────────────┐
+                 5V  GPIO17 GND        ┌──────────────────┐
                                         │  solenoid / vend │
               relay COM ────────────────┤  motor           │
               relay NO  ──── 12 V ──────┤  (1N4007 flyback │
