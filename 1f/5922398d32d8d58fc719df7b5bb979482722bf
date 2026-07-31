@@ -1,0 +1,23 @@
+docs/index.html
+  s_7021c90b94d92f::t_270ea788df355b 224-228
+  s_7021c90b94d92f::t_a0bdfb23c45a4f 427
+  s_7021c90b94d92f::t_034cc23d8c396d 208
+hardware/wiring.md
+  s_7021c90b94d92f::t_9f19407c830529 28,40,51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "1f5922398d32d8d58fc719df7b5bb979482722bf",
+  "prompts": {},
+  "sessions": {
+    "s_7021c90b94d92f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fddfcab9-3c8b-40b7-939f-5b27c022cdb4",
+        "model": "claude-opus-5"
+      },
+      "human_author": "sushant-vyapar <sushant.jain@vyapar.com>"
+    }
+  }
+}
