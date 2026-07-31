@@ -1,0 +1,85 @@
+plugins/kiosk-watch/README.md
+  s_7021c90b94d92f::t_8ef6e720ccfd8f 113-118
+  s_7021c90b94d92f::t_9c828da9a41bda 1-112
+plugins/kiosk-charge/README.md
+  s_7021c90b94d92f::t_4eee461df804c2 78-93
+  s_7021c90b94d92f::t_17bf280dbec024 75-77
+plugins/kiosk-attest/Cargo.lock
+  s_7021c90b94d92f::t_b06fe95e833024 1-723
+plugins/kiosk-attest/Cargo.toml
+  s_7021c90b94d92f::t_a0af21079ebf74 1-28
+plugins/kiosk-attest/README.md
+  s_7021c90b94d92f::t_48f9b93c756c46 1-121
+plugins/kiosk-attest/manifest.toml
+  s_7021c90b94d92f::t_755742c786a283 1-11
+plugins/kiosk-attest/src/attest.rs
+  s_7021c90b94d92f::t_70322f47b1d297 1-287
+plugins/kiosk-attest/src/lib.rs
+  s_7021c90b94d92f::t_e42b4f738e6e03 1-228
+plugins/kiosk-attest/tests/attest.rs
+  s_7021c90b94d92f::t_0884ad03fe7d4d 1-327
+plugins/kiosk-charge/Cargo.lock
+  s_7021c90b94d92f::t_455dfdb5158947 1-455
+plugins/kiosk-charge/Cargo.toml
+  s_7021c90b94d92f::t_e27b47f4a3b027 1-27
+plugins/kiosk-charge/manifest.toml
+  s_7021c90b94d92f::t_db6ce4695bde7d 1-11
+plugins/kiosk-charge/src/charge.rs
+  s_7021c90b94d92f::t_a70dc6b737e90e 1-210
+plugins/kiosk-charge/src/lib.rs
+  s_7021c90b94d92f::t_aa2fdd06eb3a18 1-230
+plugins/kiosk-charge/tests/charge.rs
+  s_7021c90b94d92f::t_bcba8024d39dad 1-238
+plugins/kiosk-watch/Cargo.lock
+  s_7021c90b94d92f::t_262641b2fd2108 1-723
+plugins/kiosk-watch/Cargo.toml
+  s_7021c90b94d92f::t_c6fda3dd6db539 1-33
+plugins/kiosk-watch/manifest.toml
+  s_7021c90b94d92f::t_30c6900cd3ec0e 1-11
+plugins/kiosk-watch/src/lib.rs
+  s_7021c90b94d92f::t_8336012bfd8e1b 1-284
+plugins/kiosk-watch/src/watch.rs
+  s_7021c90b94d92f::t_853a98b5465f31 1-468
+plugins/kiosk-watch/tests/watch.rs
+  s_7021c90b94d92f::t_fda98771f89085 1-442
+wit/UPSTREAM_REF
+  s_7021c90b94d92f::t_bda0331a031197 1-3
+wit/VERSIONING.md
+  s_7021c90b94d92f::t_718dc889a43fe8 1-89
+wit/v0/README.md
+  s_7021c90b94d92f::t_375e8582e6ffda 1-13
+wit/v0/channel.wit
+  s_7021c90b94d92f::t_75723633cae90d 1-381
+wit/v0/inbound.wit
+  s_7021c90b94d92f::t_1051c1f4284f43 1-43
+wit/v0/logging.wit
+  s_7021c90b94d92f::t_630b710d048d3b 1-107
+wit/v0/memory.wit
+  s_7021c90b94d92f::t_ae521b55cbf7f3 1-293
+wit/v0/plugin-info.wit
+  s_7021c90b94d92f::t_d84be410d11133 1-18
+wit/v0/sockets.wit
+  s_7021c90b94d92f::t_8d5925d146d166 1-86
+wit/v0/tool.wit
+  s_7021c90b94d92f::t_d14e628c165e29 1-44
+wit/v0/types.wit
+  s_7021c90b94d92f::t_95749009620d12 1-10
+wit/v0/ws-client.wit
+  s_7021c90b94d92f::t_5781d4aac24e20 1-81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "eef271182fe1d0ffa6772836f3635f68706a320d",
+  "prompts": {},
+  "sessions": {
+    "s_7021c90b94d92f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fddfcab9-3c8b-40b7-939f-5b27c022cdb4",
+        "model": "claude-opus-5"
+      },
+      "human_author": "sushant-vyapar <sushant.jain@vyapar.com>"
+    }
+  }
+}
