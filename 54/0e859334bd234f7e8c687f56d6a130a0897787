@@ -1,0 +1,21 @@
+scripts/stage-plugin.sh
+  s_7021c90b94d92f::t_a0dc97699c68f5 1-42
+.gitignore
+  s_7021c90b94d92f::t_b119be83ecebb6 4-6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "540e859334bd234f7e8c687f56d6a130a0897787",
+  "prompts": {},
+  "sessions": {
+    "s_7021c90b94d92f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fddfcab9-3c8b-40b7-939f-5b27c022cdb4",
+        "model": "claude-opus-5"
+      },
+      "human_author": "sushant-vyapar <sushant.jain@vyapar.com>"
+    }
+  }
+}
