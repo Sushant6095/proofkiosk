@@ -1,0 +1,21 @@
+docs/ci.md
+  s_7021c90b94d92f::t_637fa8e09f6bd9 1-205
+docs/index.html
+  s_7021c90b94d92f::t_e93576d534a0e1 1-502
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "d722cee62e08b3709f05ac207302af3df166eeb8",
+  "prompts": {},
+  "sessions": {
+    "s_7021c90b94d92f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fddfcab9-3c8b-40b7-939f-5b27c022cdb4",
+        "model": "claude-opus-5"
+      },
+      "human_author": "sushant-vyapar <sushant.jain@vyapar.com>"
+    }
+  }
+}
