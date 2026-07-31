@@ -1,0 +1,24 @@
+README.md
+  s_7021c90b94d92f::t_1af40e96c4d5b9 1-218
+.github/workflows/ci.yml
+  s_7021c90b94d92f::t_fca6654f889cc9 1-7
+  s_7021c90b94d92f::t_dd791416fe5f19 8-10
+SECURITY.md
+  s_7021c90b94d92f::t_a82468b3109857 1-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "f5acf1b297bf8410baf16ae342c0394dd6d71851",
+  "prompts": {},
+  "sessions": {
+    "s_7021c90b94d92f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fddfcab9-3c8b-40b7-939f-5b27c022cdb4",
+        "model": "claude-opus-5"
+      },
+      "human_author": "sushant-vyapar <sushant.jain@vyapar.com>"
+    }
+  }
+}
