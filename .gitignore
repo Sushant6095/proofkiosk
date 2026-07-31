@@ -1,0 +1,7 @@
+target/
+*.wasm
+
+# scripts/devnet-setup.sh writes throwaway test keypairs and a validator ledger here.
+.devnet/
+
+.DS_Store
