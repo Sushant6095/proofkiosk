@@ -1,0 +1,26 @@
+vercel.json
+  s_7021c90b94d92f::t_4b73158e5b1f81 1-2,4
+  s_7021c90b94d92f::t_06a1300fe8ae16 3
+.vercelignore
+  s_7021c90b94d92f::t_cde8f6a5e99dc7 1-6
+README.md
+  s_7021c90b94d92f::t_3fa168150ff0ea 340-348
+.gitignore
+  s_7021c90b94d92f::t_6f6a7a8e522e13 11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "f523aa233461f153283085584b96cce915628aa6",
+  "prompts": {},
+  "sessions": {
+    "s_7021c90b94d92f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fddfcab9-3c8b-40b7-939f-5b27c022cdb4",
+        "model": "claude-opus-5"
+      },
+      "human_author": "sushant-vyapar <sushant.jain@vyapar.com>"
+    }
+  }
+}
