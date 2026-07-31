@@ -1,80 +1,100 @@
 # kiosk-attest
 
-**Part of ProofKiosk** — a Raspberry Pi that sells for USDC, physically delivers, and
-proves it on-chain, while the agent never holds a key. This is component 3 of 3
-(`kiosk-charge` → `kiosk-watch` → **`kiosk-attest`**), Track C (DePIN & the physical
-edge).
+Notarizes a sensor reading or a sale receipt on Solana as a **hash-chained,
+durable-nonce, memo-only transaction** — built **unsigned**, so the plugin holds no key
+and a transfer is not expressible in its output.
 
-`kiosk_attest` is the **proof**: it records a tamper-evident, hash-chained attestation
-of a sensor reading or a sale event on Solana. It builds an **unsigned**, durable-nonce
-memo transaction and hands it back for the operator's signer to submit — the agent never
-signs and cannot move funds.
+**For:** anyone who needs a tamper-evident record that a machine observed something at a
+time. Cold-chain logging, uptime proofs, meter readings, sale receipts. Useful standalone
+from a laptop — it will notarize arbitrary bounded readings with no kiosk attached.
+Component 3 of 3 in [ProofKiosk](../../README.md).
 
-It is **channel-agnostic** and stateless: the chain sequence is recovered from the chain
-itself on every call, so a fresh host with no local state produces the next correct link.
+Channel-agnostic and stateless: the chain sequence is recovered from the chain itself on
+every call, so a fresh host with no local state still produces the next correct link.
 
-## Custody tier: T1 — funds cannot move, by construction
+---
 
-- **No secrets, no signing.** The plugin reads the chain (recover seq/prev; read the
-  durable nonce) and emits an *unsigned* transaction. Zero signatures are attached.
-- **The transaction is structurally incapable of moving funds.** It is built from
-  exactly two instructions — System `AdvanceNonceAccount` and SPL Memo — and a transfer
-  is not constructed anywhere in the crate. A host test asserts the compiled program set
-  is exactly `{System, Memo}`, so even a fully compromised model cannot make this plugin
-  emit a spend.
-- **The model can never choose the device, nonce account/authority, or RPC endpoint.**
-  Those are operator config. The model supplies only a reading (`metric`, `value`) or an
-  event label — and a reading must clear the operator's allowlist and bounds.
+## Custody: Tier 1 — funds cannot move, by construction
 
-## How the hash chain works
+| Property | Status |
+|---|---|
+| Holds a private key | **No.** |
+| Signs anything | **No.** The built transaction carries **zero** signatures. |
+| Network access | Read-only RPC (recover chain head, read the nonce). |
+| Can move funds | **No — structurally.** See below. |
 
-Each attestation writes a memo:
+The transaction contains exactly two programs: **Memo** and **System**
+(`AdvanceNonceAccount`). A transfer instruction is not present and cannot be added by any
+model input, because the instruction set is assembled from a fixed list rather than from
+arguments. This is asserted by a structural test
+(`tx_contains_only_memo_and_system_programs`) that inspects the compiled program-id set,
+not by validating a string.
 
-```json
-{ "v": 1, "dev": "kiosk01", "seq": 8, "ts": 1700000000,
-  "metric": "temp_c", "val": 4.2, "prev": "<previous attestation signature>" }
-```
+That is the difference between "we check for transfers" and "a transfer is not
+expressible." An external operator signer receives the unsigned bytes and decides whether
+to sign. Even a fully subverted agent can only hand that signer a memo.
 
-- `seq` / `prev` link every attestation to the one before it (the previous landed
-  signature). The whole record is anchored on-chain; a missing or reordered entry breaks
-  the walk, so gaps are **detectable**.
-- Recovery is one RPC call: `getSignaturesForAddress(nonce_account, limit 1)` returns the
-  newest attestation and its memo; the next `seq` is `memo.seq + 1` and `prev` is that
-  signature. A device with no history starts at `seq 0, prev null`.
-- This is tamper-evident **ordering**, not a content-hash Merkle tree: an authorized
-  signer could in principle branch history. It needs no attestation-service program
-  deployed and is self-contained — that is the deliberate tradeoff.
+**Why a WASM plugin and not a Tier-1 skill — honestly.** This is the component with the
+strongest case for a jail, and it is still worth stating what the jail does and does not
+buy. It does *not* protect a signing key, because there is no key here. What it buys: the
+`permissions = ["http_client", "config_read"]` declaration is a checkable, narrow
+statement about what this code can reach, and the fresh-store-per-call model makes the
+"derive the chain head from the chain" design enforced rather than merely intended.
 
-## Why a durable nonce
+A Tier-1 skill could build the same unsigned transaction. It could not make the same
+declaration about its own reach, and a script that assembles transaction bytes is
+precisely where "I promise it only adds a memo" is worth less than a structural test plus
+a capability list. If you are notarizing readings and not driving hardware, a skill is a
+perfectly reasonable choice — the component boundary is buying auditability here, not
+secrecy.
 
-The transaction uses a durable nonce in place of a recent blockhash, so an attestation
-built now stays valid to submit later — the Pi can attest across brief connectivity gaps.
-`AdvanceNonceAccount` is always **instruction 0** (Solana requires it), enforced by a
-test.
+---
 
-## Config keys (`__config`, injected by the host)
+## Config
+
+Operator-owned, injected as `__config`.
 
 | Key | Required | Meaning |
 |---|---|---|
-| `rpc_url` | yes | Solana JSON-RPC endpoint. |
-| `device_id` | yes | Human device id written into each memo as `dev`. |
-| `nonce_account` | yes | Durable nonce account pubkey (base58). The chain is scanned here. |
-| `nonce_authority` | yes | Nonce authority / fee payer pubkey; must own the nonce account. |
-| `allowed_metrics` | no | `"temp_c:-40:85, humidity:0:100"` — metric → inclusive `[min,max]`. |
+| `rpc_url` | **yes** | Solana JSON-RPC endpoint. |
+| `device_id` | **yes** | Human device id written into every memo as `dev`. |
+| `nonce_account` | **yes** | Durable nonce account pubkey (base58). The attestation chain is scanned here. |
+| `nonce_authority` | **yes** | Nonce authority / fee payer **public** key; must own the nonce account. |
+| `allowed_metrics` | no | `"temp_c:-40:85, humidity:0:100"` — the metric allowlist **and** its bounds. |
 | `custody_mode` | no | Default `t1`. |
 
-## Args (model-facing, `deny_unknown_fields`)
+Minimal working config:
+
+```toml
+[plugins.kiosk-attest.config]
+rpc_url         = "https://api.devnet.solana.com"
+device_id       = "kiosk-01"
+nonce_account   = "YOUR_NONCE_ACCOUNT_PUBKEY"
+nonce_authority = "YOUR_NONCE_AUTHORITY_PUBKEY"   # PUBLIC key
+allowed_metrics = "temp_c:-40:85, humidity:0:100"
+```
+
+**On secrets — the one place a ProofKiosk deployment involves a key.** `nonce_authority`
+above is a **public** key. The matching private key belongs to your external signer, lives
+outside ZeroClaw entirely (separate process, ideally separate machine or an HSM), and must
+never appear in any config ZeroClaw can read. If this config file leaks, an attacker
+learns which account attests and nothing more. Full reasoning in
+[`docs/threat-model.md`](../../docs/threat-model.md).
+
+**Set `allowed_metrics`.** Without it there is no bound to enforce, and bounds are how a
+failing sensor gets caught. Bracket the *plausible* range of your enclosure, not the
+sensor's datasheet range.
+
+## Args (model-facing, `deny_unknown_fields` + raw-key allowlist)
 
 | Arg | Kind | Meaning |
 |---|---|---|
 | `kind` | both | `"reading"` (default) or `"event"`. |
-| `metric`, `value` | reading | Metric name (allowlisted) and numeric value (bounded, finite). |
-| `event`, `item`, `payment_sig` | event | Event label; optional item id and payment signature. |
-| `ts` | both | Unix seconds; defaults to now. |
+| `metric`, `value` | reading | Allowlisted metric name; finite numeric value inside its bounds. |
+| `event`, `item`, `payment_sig` | event | Event label, optional item id and payment signature. |
+| `ts` | both | Unix seconds. Defaults to now. |
 
 ## Worked example
-
-Args from the model:
 
 ```json
 { "kind": "reading", "metric": "temp_c", "value": 4.2 }
@@ -87,35 +107,144 @@ ATTESTED reading seq=8 metric=temp_c val=4.2 ts=1700000000 — unsigned durable-
 unsigned_tx_base64=AQABBQ...
 ```
 
-## Threat model & injection transcript (fail closed)
+The memo payload is `{v, dev, seq, ts, metric, val, prev}`. `seq` and `prev` (the previous
+attestation's landed signature) are what make the readings an ordered chain: a deleted or
+reordered reading is detectable by walking it.
 
-All executed as host tests (`cargo test`, RPC mocked, **no network**):
+## Prompt injection: refusing to attest a lie
+
+Every row is an executable host test (`cargo test`, RPC mocked, **no network**).
 
 | Attack / failure | Result |
 |---|---|
-| "Attest to MY account" → smuggled `{"nonce_authority": …}` / `{"recipient": …}` arg | **Rejected** — `deny_unknown_fields` + a raw-key allowlist; fails before any logic. |
+| "Attest to MY account" → smuggled `{"nonce_authority": …}` / `{"recipient": …}` | **Rejected** before any logic. |
 | Metric not in the operator allowlist | **Rejected** — refuse to attest an unknown metric. |
-| Value out of the operator's `[min,max]` | **Rejected** — a bad reading is refused, never clamped into a plausible lie. |
+| Value outside `[min,max]` | **Rejected** — refused outright, never clamped into a plausible lie. |
 | Value `NaN` / `±inf` | **Rejected** — non-finite values cannot be attested. |
-| Attempt to move funds | **Impossible** — the tx has only Memo + System programs; asserted structurally. |
-| RPC node errors / returns garbage | **`Err`, never a successful attestation.** |
+| "Add a transfer to the transaction" | **Impossible.** Memo + System only; asserted structurally. |
+| RPC errors or returns garbage | **`Err`** — never a successful attestation. |
 | Newest device tx has no readable attestation memo | **Chain gap surfaced** — not silently treated as a fresh device. |
 
-No path yields a signed transaction or a fund movement; the plugin holds no key and the
-built transaction carries zero signatures.
+The refusal-over-clamping choice is the important one. A clamped reading is a plausible
+number that is wrong, written permanently to a public ledger. An error is recoverable; a
+notarized lie is not.
 
-## Layout, wasip2 & tests
+---
 
-Pure core (`src/attest.rs`, no wasm deps) + thin `#[cfg(target_family = "wasm")]` shim
-(`src/lib.rs`), matching the other kiosk plugins. All Solana primitives come from
-`crates/kiosk-core` (hand-rolled base58, base64, shortvec, memo/nonce instruction
-builders, legacy message serialization, JSON-RPC seam) — **no `solana-sdk`**, which does
-not compile for `wasm32-wasip2`. The real HTTPS transport (`waki`) is compiled only for
-the wasm target via a target-gated `http` feature, so `cargo test` stays zero-network.
+## Reproduce it in an evening
 
+Tested against ZeroClaw **v0.8.3**.
+
+**1. A host with the plugin runtime.** Prebuilt binaries ship without it —
+`zeroclaw plugin …` is an unrecognized subcommand there. One backend flag carries the
+`plugins-wasm` umbrella:
+
+```bash
+./install.sh --source --features plugins-wasm-cranelift
 ```
-cargo test                                      # 16 host tests, no network
+
+**2. Build and stage:**
+
+```bash
 rustup target add wasm32-wasip2
-cargo build --target wasm32-wasip2 --release    # ~384 KB component
-cargo clippy --all-targets -- -D warnings
+git clone https://github.com/Sushant6095/proofkiosk.git && cd proofkiosk
+cargo test --manifest-path plugins/kiosk-attest/Cargo.toml   # 16 tests, RPC mocked, no network
+./scripts/stage-plugin.sh kiosk-attest                       # -> staged/kiosk-attest/
 ```
+
+**3. Install and enable:**
+
+```bash
+zeroclaw plugin install ./staged/kiosk-attest/
+zeroclaw config set plugins.enabled true
+zeroclaw plugin list
+zeroclaw plugin info kiosk-attest
+```
+
+**4. Create a durable nonce account** on devnet with the Solana CLI. This is the signer's
+job, deliberately outside ZeroClaw:
+
+```bash
+solana-keygen new -o nonce-authority.json
+solana airdrop 2 --keypair nonce-authority.json --url devnet
+solana-keygen new -o nonce-account.json
+solana create-nonce-account nonce-account.json 0.0015 \
+  --keypair nonce-authority.json --url devnet
+
+solana address -k nonce-account.json      # -> nonce_account
+solana address -k nonce-authority.json    # -> nonce_authority
+```
+
+Put those two **public** addresses in the config above. Keep both keypair files away from
+ZeroClaw.
+
+**5. Attest something,** in chat:
+
+```
+> record a temperature reading of 4.2
+```
+
+You get back unsigned base64. Inspect it before signing — being able to is the entire
+point of an unsigned artifact:
+
+```bash
+echo "<unsigned_tx_base64>" | base64 -d | xxd | head
+```
+
+Then sign and submit it with your external signer. ProofKiosk deliberately ships no
+signing step; that boundary is the security model, not an omission.
+
+**6. Attest on a cadence** with [`sops/sensor-loop/`](../../sops/sensor-loop), which reads
+a sensor and attests the reading every five minutes.
+
+---
+
+## What fought us at the component boundary
+
+- **Hand-rolling Solana transaction serialization.** No `solana-sdk` on
+  `wasm32-wasip2`, so [`crates/kiosk-core`](../../crates/kiosk-core) implements base58,
+  base64, **shortvec** (Solana's compact-u16 length prefix), the legacy message layout,
+  and the Memo and `AdvanceNonceAccount` instruction builders. Shortvec is the nasty one:
+  get the varint wrong and the transaction deserializes into a *different, valid*
+  transaction rather than failing loudly. It has property tests for exactly that reason.
+- **`AdvanceNonceAccount` must be instruction 0.** Solana enforces it — a durable-nonce
+  transaction with the advance anywhere else is rejected by the network, not at build
+  time. Pinned by a test so it fails in CI instead of on devnet.
+- **The durable nonce exists because of the component's own constraints.** A recent
+  blockhash expires in ~60 s. A Pi that batches attestations, loses connectivity, or waits
+  on a human signer will blow through that. The nonce is what makes an attestation built
+  now still submittable later, which is the only reason offline attestation works.
+- **Statelessness forced the chain design.** With a fresh store per call there is nowhere
+  to keep `seq`. It is recovered from the chain in a **single**
+  `getSignaturesForAddress`, and `prev` is the last landed signature. Reading the sequence
+  from the ledger rather than from local state is also what makes a gap detectable instead
+  of silently skipped.
+- **A ~200-token output budget with a base64 transaction inside it.** Unsigned transaction
+  bytes are bulky and the output is model-facing. Everything else is compressed to
+  `key=value` and passed through `kiosk_core::shape::clamp`, with a test asserting the
+  ceiling.
+- **384 KB, the largest of the three,** because it bundles the HTTP/TLS client *and* the
+  transaction builders. Both earn their bytes.
+
+## Layout & tests
+
+Pure core (`src/attest.rs`, zero wasm deps) plus a thin
+`#[cfg(target_family = "wasm")]` shim (`src/lib.rs`).
+
+```bash
+cargo test                                      # 16 host tests, no network
+cargo clippy --all-targets -- -D warnings
+cargo build --target wasm32-wasip2 --release    # ~384 KB component
+```
+
+## Honest limitation
+
+The chain is tamper-evident **ordering**, not a content-hash Merkle tree. `seq`/`prev`
+make deletion and reordering detectable; an authorized signer could still branch history.
+The tradeoff buys a self-contained design with no attestation-service program to deploy
+and trust. Stated here rather than left for a reviewer to find.
+
+## The rest of the system
+
+[`kiosk-charge`](../kiosk-charge) issues the charge, [`kiosk-watch`](../kiosk-watch)
+verifies it. Start at the [top-level README](../../README.md).

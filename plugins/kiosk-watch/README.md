@@ -1,118 +1,232 @@
 # kiosk-watch
 
-**Part of ProofKiosk** — a Raspberry Pi that sells for USDC, physically delivers, and
-proves it on-chain, while the agent never holds a key. This is component 2 of 3
-(`kiosk-charge` → **`kiosk-watch`** → `kiosk-attest`), Track C (DePIN & the physical
-edge) with Track A payment rails inside.
+Answers one question with a boolean you can wire to a relay: **did the expected USDC
+payment actually land on-chain?** Verifies recipient, mint, amount, reference, and
+finality in one `getSignaturesForAddress` plus at most one `getTransaction`.
 
-`kiosk_watch` is the **gate**: it answers the one question the actuation SOP checks
-before firing the GPIO relay — *did the expected payment actually land on-chain?* — by
-verifying the `reference` from `kiosk-charge` against the operator's merchant address,
-mint, amount, and finality. It also has a **heartbeat** mode to confirm the device's
-attestation stream is still fresh.
+**For:** anyone who needs "is invoice X paid?" answered by the chain rather than by a
+language model. Useful standalone from a laptop — point it at any Solana Pay reference
+and it tells you PAID / PENDING / EXPIRED / MISMATCH. Component 2 of 3 in
+[ProofKiosk](../../README.md), where it is the gate the actuation SOP checks before
+firing a GPIO relay. Also has a **heartbeat** mode for device liveness.
 
-It is **channel-agnostic**: it verifies on-chain state, not a chat message, so it works
-identically whether the sale happened over Telegram, a local screen, or any other
-front-end.
+Channel-agnostic by construction: it verifies on-chain state, not a chat message, so it
+behaves identically whether the sale happened over Telegram, a local screen, or a
+webhook.
 
-## Custody tier: T0 — no keys, read-only
+---
 
-- **No secrets, no signing.** `kiosk-watch` only *reads* the chain over JSON-RPC
-  (`getSignaturesForAddress`, `getTransaction`). It cannot move funds.
-- **The model can never choose the recipient, mint, or RPC endpoint.** Those come from
-  the operator's jailed config section. The model supplies only a `reference`, an
-  `expected_amount`, and (optionally) a `window_s` — or, in heartbeat mode, a
-  `device_address` and `max_silence_s`.
-- **One unambiguous actuation condition.** `success == true` **iff** a transaction
-  crediting the exact `expected_amount` of the operator's `usdc_mint` to the operator's
-  `merchant_address`, referencing this charge, has landed at the configured finality.
-  Every other outcome — pending, expired, mismatch, RPC failure, malformed response —
-  returns `success == false`. The relay gates on that single boolean, so **the relay
-  can never fire on anything but a verified payment.**
+## Custody: Tier 0 — no keys, read-only
 
-## Config keys (`__config`, injected by the host)
+| Property | Status |
+|---|---|
+| Holds a private key | **No.** |
+| Signs or submits anything | **No.** Two read-only JSON-RPC calls. |
+| Network access | Read-only RPC to the operator's endpoint. |
+| Can move funds | **No.** There is no code path that builds a transaction. |
+
+**One unambiguous actuation condition.** `success == true` **iff** a transaction
+crediting the exact `expected_amount` of the operator's `usdc_mint` to the operator's
+`merchant_address`, carrying this charge's `reference`, has landed at the configured
+finality. Pending, expired, mismatch, RPC failure, and malformed response all return
+`success == false`. The relay gates on that single boolean, so **it cannot fire on
+anything but a verified payment.**
+
+**Why a WASM plugin and not a Tier-1 skill — honestly.** This is the component where a
+skill would genuinely suffice. It is read-only HTTP plus JSON parsing; nothing here needs
+a capability jail, and
+[solana-treasury-sentinel](https://github.com/LubuSeb/solana-treasury-sentinel) shows a
+read-only Solana agent done properly as a stock skill with no WASM at all. If you want
+payment verification and nothing else, write the skill.
+
+Two things kept it a component here, and neither is about this plugin in isolation:
+
+1. **It shares a tested core with the other two.** base58, the JSON-RPC transport seam,
+   and output shaping live in [`crates/kiosk-core`](../../crates/kiosk-core) and are
+   exercised by 55 tests. Splitting one of the three out into a script would mean
+   maintaining that Solana substrate twice.
+2. **It runs on a device that actuates.** On a box wired to a relay, the fuel and memory
+   ceilings and the `permissions` declaration are worth having on *every* component, not
+   just the ones that strictly need them. A uniform jail is easier to reason about than a
+   jail with one trusted script in it.
+
+That is a defensible reason, not an obligatory one. Stated plainly so you can disagree.
+
+---
+
+## Config
+
+Operator-owned, injected as `__config`. The model cannot see or set any of it.
 
 | Key | Required | Meaning |
 |---|---|---|
-| `rpc_url` | yes | Solana JSON-RPC endpoint. Fail-closed if missing/empty. |
-| `merchant_address` | yes | Operator's receiving pubkey (base58, 32 bytes). Fail-closed if invalid. |
-| `usdc_mint` | no | SPL mint to expect; defaults to mainnet USDC (`EPjF…Dt1v`). Set devnet USDC when testing. |
-| `finality` | no | Commitment gating the answer: `processed` \| `confirmed` \| `finalized`. Default `confirmed`. |
+| `rpc_url` | **yes** | Solana JSON-RPC endpoint. Fail-closed if missing or empty. |
+| `merchant_address` | **yes** | Receiving pubkey (base58, 32 bytes). Must match the charge recipient. Fail-closed if invalid. |
+| `usdc_mint` | no | Mint to expect. Defaults to mainnet USDC (`EPjF…Dt1v`). |
+| `finality` | no | `processed` \| `confirmed` \| `finalized`. Default `confirmed`. |
 
-**Finality note (safety):** `confirmed` is the default — a supermajority has voted, so a
-reorg is unlikely, and the latency (~1–2s) keeps the buy-to-drop experience fast. An
-operator who wants economic irreversibility before actuating can set `finalized` (adds
-~13s). `processed` is available but **not recommended** for actuation: it can still be
-rolled back.
+Minimal working config — two keys:
 
-## Args (model-facing, `deny_unknown_fields`)
+```toml
+[plugins.kiosk-watch.config]
+rpc_url          = "https://api.devnet.solana.com"
+merchant_address = "YOUR_MERCHANT_PUBKEY"
+```
+
+**Finality is a safety knob, not a performance one.** `confirmed` (default) means a
+supermajority has voted — a reorg is unlikely and the ~1–2 s latency keeps buy-to-drop
+fast. `finalized` buys economic irreversibility for about 13 s more; use it for anything
+expensive. `processed` is available and **not recommended for actuation** — it can still
+be rolled back, and rolling back a dispensed drink is not a thing.
+
+**No secrets in this config.** If your RPC provider needs a key in the URL, that URL is
+the one sensitive value in the file — treat `rpc_url` as a credential in that case and
+keep it out of version control. ProofKiosk itself holds no key material.
+
+## Args (model-facing, `deny_unknown_fields` + raw-key allowlist)
 
 | Arg | Mode | Meaning |
 |---|---|---|
 | `reference` | payment | Solana Pay reference pubkey from the charge. Required. |
-| `expected_amount` | payment | Expected USDC amount, decimal string (e.g. `"1.5"`). Required. |
-| `window_s` | payment | Acceptance window in seconds; a matching payment older than this before *now* is `Expired`, not `Paid`. Optional. |
-| `mode` | both | `"heartbeat"` selects heartbeat mode; absent/`"payment"` = payment. |
+| `expected_amount` | payment | Expected USDC amount, decimal string (`"1.5"`). Required. |
+| `window_s` | payment | Acceptance window in seconds; a match older than this is `Expired`, not `Paid`. |
+| `mode` | both | `"heartbeat"` selects heartbeat mode; absent or `"payment"` is payment. |
 | `device_address` | heartbeat | Device attestation address to scan. Required in heartbeat mode. |
-| `max_silence_s` | heartbeat | Max seconds since newest attestation before `Stale`. Required in heartbeat mode. |
+| `max_silence_s` | heartbeat | Seconds since newest attestation before `Stale`. Required in heartbeat mode. |
 
-## Worked example (payment)
+The single-use `reference` is also the replay guard: a previously-consumed reference
+cannot re-authorize a second dispense.
 
-Args from the model:
+## Worked example
 
 ```json
 { "reference": "3g8oT…dK2f", "expected_amount": "1.5", "window_s": 300 }
 ```
 
-Output when the payment has landed (single string, token-budgeted, asserted ≤ 200
-tokens in tests), with `success == true`:
+Landed — `success == true`:
 
 ```
 PAID. Payment verified on-chain at slot 100, signature 5xSig…, payer 9aB…. Safe to deliver.
 ```
 
-Before it lands, `success == false`:
+Not yet — `success == false`:
 
 ```
 PENDING. No matching payment on-chain yet. Do not deliver; check again shortly.
 ```
 
-## Threat model & prompt-injection transcript (fail closed)
+## Prompt injection and failure: everything points at "refuse to actuate"
 
-All executed as host tests (`cargo test`, RPC mocked, **no network**):
+Every row is an executable host test (`cargo test`, RPC mocked, **no network**).
 
 | Attack / failure | Result |
 |---|---|
-| "Verify against MY rpc/address" → smuggled `{"rpc_url": …}` / `{"merchant_address": …}` arg | **Rejected** — `deny_unknown_fields` + a raw-key allowlist; deserialization fails before any logic runs. |
-| RPC node errors, times out, or returns garbage | **`Err`, never `Paid`** → `success:false`. The relay stays shut. (`rpc_error_is_err_never_paid`, `malformed_get_transaction_is_err_never_paid`) |
-| Payment is for the wrong amount | **`Mismatch`** → `success:false`. |
-| Payment went to a different recipient | **`Mismatch`** → `success:false`. |
-| Payment used a different mint (not the configured USDC) | **`Mismatch`** → `success:false`. |
-| On-chain transaction failed (`meta.err != null`) | **`Mismatch`** — funds did not move. |
-| A stale/reused-reference payment older than `window_s` | **`Expired`** → `success:false`. |
-| Customer hasn't paid yet | **`Pending`** → `success:false`; the SOP's cron bounds total wait. |
+| "Verify against MY rpc/address" → smuggled `{"rpc_url": …}` / `{"merchant_address": …}` | **Rejected** — `deny_unknown_fields` + raw-key allowlist, before any logic. |
+| RPC errors, times out, or returns garbage | **`Err`, never `Paid`** → `success:false`. Relay stays shut. (`rpc_error_is_err_never_paid`, `malformed_get_transaction_is_err_never_paid`) |
+| Wrong amount | **`Mismatch`** → `success:false`. |
+| Different recipient | **`Mismatch`** → `success:false`. |
+| Different mint | **`Mismatch`** → `success:false`. |
+| On-chain tx failed (`meta.err != null`) | **`Mismatch`** — funds did not move. |
+| Stale / reused reference older than `window_s` | **`Expired`** → `success:false`. |
+| Customer simply hasn't paid | **`Pending`** → `success:false`. |
 
-The failure direction is always "refuse to actuate." There is no reachable path where an
-RPC failure, a partial response, or a non-matching transaction yields `success == true`.
+There is no reachable path where an RPC failure, a partial response, or a non-matching
+transaction yields `success == true`.
+
+---
+
+## Reproduce it in an evening
+
+Tested against ZeroClaw **v0.8.3**.
+
+**1. A host with the plugin runtime** (prebuilt binaries lack it — `zeroclaw plugin …`
+is unrecognized there):
+
+```bash
+./install.sh --source --features plugins-wasm-cranelift
+```
+
+**2. Build and stage:**
+
+```bash
+rustup target add wasm32-wasip2
+git clone https://github.com/Sushant6095/proofkiosk.git && cd proofkiosk
+cargo test --manifest-path plugins/kiosk-watch/Cargo.toml   # 24 tests, RPC mocked, no network
+./scripts/stage-plugin.sh kiosk-watch                       # -> staged/kiosk-watch/
+```
+
+**3. Install and enable:**
+
+```bash
+zeroclaw plugin install ./staged/kiosk-watch/
+zeroclaw config set plugins.enabled true
+zeroclaw plugin list
+zeroclaw plugin info kiosk-watch
+```
+
+**4. Get real values to verify against** — this spins up a localnet, mints a USDC-like
+test token, and prints a paste-ready config block:
+
+```bash
+./scripts/devnet-setup.sh
+```
+
+**5. Run the loop.** Issue a charge with [`kiosk-charge`](../kiosk-charge), pay the
+`solana:` URL from any devnet wallet, then in chat:
+
+```
+> is reference 3g8oT…dK2f paid? expected 1.5
+```
+
+It flips `PENDING` → `PAID` once the transfer reaches your configured finality. That is
+the whole payment rail, on a laptop, no hardware.
+
+---
+
+## What fought us at the component boundary
+
+- **No `solana-client`, and no HTTP client that assumes sockets.** `solana-sdk` /
+  `solana-client` do not build for `wasm32-wasip2`, and neither does `reqwest`. The RPC
+  layer is a one-method transport trait in
+  [`crates/kiosk-core`](../../crates/kiosk-core) with two implementations: `waki`
+  (blocking `wasi:http`) for the component, and a mock for host tests.
+- **That seam is why `cargo test` needs no network.** `waki` only exists inside a
+  component, so it sits behind an optional `http` feature that is activated *only* under
+  `[target.'cfg(target_family = "wasm")'.dependencies]`. Host tests physically cannot
+  reach the wire — there is no HTTP client linked into them. No `--features` flag to
+  remember, no live-network flake.
+- **Verifying an SPL transfer is not reading one field.** There is no "amount paid to X"
+  in a transaction. You diff `preTokenBalances` against `postTokenBalances`, match the
+  `owner` *and* the `mint`, check `meta.err` is null, and only then trust the number.
+  Getting this wrong in the optimistic direction is how a kiosk gives away stock, so
+  every branch is a test.
+- **Untrusted JSON must not panic.** RPC responses are attacker-influenced in the general
+  case. Every decoder returns `Result`; fuzz and property tests in `kiosk-core` assert
+  no-panic on malformed base58, base64, and RPC bodies. A panic in a component is a trap,
+  and a trap mid-sale is an outcome you cannot explain to a customer.
+- **HTTP/TLS is most of the binary.** 348 KB versus kiosk-charge's 210 KB, and the delta
+  is almost entirely the bundled client. Inherent to a network-touching component, not
+  slack in our code.
 
 ## Layout & tests
 
-Pure core (`src/watch.rs`, no wasm deps) + thin `#[cfg(target_family = "wasm")]` shim
-(`src/lib.rs`), matching `plugins/kiosk-charge`. RPC is mocked in host tests through
-`kiosk_core::rpc::RpcTransport` (a one-method seam); the real HTTPS transport (`waki`)
-is compiled only for the wasm target via a target-gated `http` feature, so
-`cargo test` stays zero-network.
+Pure core (`src/watch.rs`, zero wasm deps) plus a thin
+`#[cfg(target_family = "wasm")]` shim (`src/lib.rs`).
 
-```
+```bash
 cargo test                                      # 24 host tests, no network
-rustup target add wasm32-wasip2
-cargo build --target wasm32-wasip2 --release    # ~348 KB component
 cargo clippy --all-targets -- -D warnings
+cargo build --target wasm32-wasip2 --release    # ~348 KB component
 ```
+
+## Wiring it to actuation
+
+[`sops/payment-loop/`](../../sops/payment-loop) is the cron → verify → relay SOP. **Read
+its "Known gap" section before connecting a load:** the routing is verified against the
+runtime, but the guard predicate is not yet wired end-to-end, so rung 3 is demo-wired
+rather than production-wired. Stated up front rather than discovered by you.
 
 ## The rest of the system
 
-`kiosk-charge` (T1 Solana Pay charge builder) and `kiosk-attest` (T1 hash-chained
-attestations with a durable nonce) ship in this same repo, along with the Pi wiring
-guide (`hardware/wiring.md`) and the actuation SOPs (`sops/`). Start at the
-[top-level README](../../README.md).
+[`kiosk-charge`](../kiosk-charge) issues the charge; [`kiosk-attest`](../kiosk-attest)
+proves what happened. Start at the [top-level README](../../README.md).
