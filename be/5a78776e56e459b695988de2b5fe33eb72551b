@@ -1,0 +1,39 @@
+sops/payment-loop/SOP.toml
+  s_7021c90b94d92f::t_b7dca683e4068b 7-24
+  s_7021c90b94d92f::t_e2088bb093e122 4-6
+sops/sensor-loop/SOP.toml
+  s_7021c90b94d92f::t_79be41ad7d7a7b 6-22
+  s_7021c90b94d92f::t_feab52f885c61f 3-5
+sops/heartbeat/SOP.md
+  s_7021c90b94d92f::t_5f4f613ce00520 12-38,54-73
+  s_7021c90b94d92f::t_9dd17b0edb3d25 39-47
+  s_7021c90b94d92f::t_b93d4c23cfe835 9-11
+  s_7021c90b94d92f::t_e29e6e62a8c433 48-53
+sops/heartbeat/SOP.toml
+  s_7021c90b94d92f::t_32b270a8b24b76 7-22
+  s_7021c90b94d92f::t_9710a0d9358cc8 4-6
+sops/sensor-loop/SOP.md
+  s_7021c90b94d92f::t_23d2c2c8a8682c 11-61
+  s_7021c90b94d92f::t_073d96beae2c78 8-10
+sops/payment-loop/SOP.md
+  s_7021c90b94d92f::t_9758164a12a58a 12-49,75-94
+  s_7021c90b94d92f::t_84ee8f541414f7 51-74
+  s_7021c90b94d92f::t_b8bedb57847af6 9-11
+  s_7021c90b94d92f::t_ca17b15d44d123 50
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "be5a78776e56e459b695988de2b5fe33eb72551b",
+  "prompts": {},
+  "sessions": {
+    "s_7021c90b94d92f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fddfcab9-3c8b-40b7-939f-5b27c022cdb4",
+        "model": "claude-opus-5"
+      },
+      "human_author": "sushant-vyapar <sushant.jain@vyapar.com>"
+    }
+  }
+}
