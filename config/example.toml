@@ -1,0 +1,108 @@
+# ProofKiosk — example operator config
+#
+# Copy the blocks you need into your ZeroClaw config (`~/.zeroclaw/config.toml`).
+# ZeroClaw injects each `[plugins.<name>.config]` block into that plugin's `execute`
+# call as the flat `__config` string map.
+#
+# EVERY value here is operator-owned. The model cannot see, set, or override any of
+# them — recipient, mint, RPC endpoint, nonce accounts, and metric bounds all arrive
+# through this file. The model chooses only an item/amount (charge), a
+# reference/amount (watch), or a bounded reading/event (attest).
+#
+# SECRETS: there are none in this file, and there should never be any. None of the
+# three plugins holds a private key or signs anything. The one secret in a real
+# deployment — the operator signer that submits `kiosk_attest`'s unsigned transaction —
+# lives outside ZeroClaw entirely. See docs/threat-model.md.
+#
+# Placeholder convention: values in CAPS are yours to fill in. Run
+# `scripts/devnet-setup.sh` to generate real devnet/localnet values.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# kiosk-charge (T1) — builds the Solana Pay charge. Zero network, zero secrets.
+# ─────────────────────────────────────────────────────────────────────────────
+[plugins.kiosk-charge.config]
+# REQUIRED. Base58 32-byte pubkey where funds land. The only required key.
+merchant_address = "YOUR_MERCHANT_PUBKEY"
+
+# Optional. SPL mint to charge in. Defaults to mainnet USDC.
+# Use the mint printed by scripts/devnet-setup.sh when testing.
+usdc_mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+
+# Optional. Catalog: "item_id:usdc_amount" pairs. An item the model names that is not
+# in this list is refused ("unknown item"), so the catalog is the allowlist.
+price_list = "cold_drink:1.5, snack:0.75"
+
+# Optional. Hard cap for free-amount charges. Default 100.
+max_amount_usdc = "10"
+
+# Optional. Merchant label shown in the customer's wallet.
+label = "Kiosk 01"
+
+# Optional, COSMETIC ONLY. A static operator-set rate used to render a fiat hint next
+# to the charge. It is a display string; the on-chain amount is always the USDC figure
+# and is what kiosk-watch verifies. No price feed, no oracle, not in the trust path.
+# display_currency = "BRL"
+# display_rate     = "5.40"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# kiosk-watch (T0) — verifies the payment on-chain before actuation. Read-only.
+# ─────────────────────────────────────────────────────────────────────────────
+[plugins.kiosk-watch.config]
+# REQUIRED. Your Solana JSON-RPC endpoint. kiosk-watch believes the chain state this
+# endpoint reports, so point it somewhere you trust — your own validator, or a
+# reputable provider. A malicious RPC is the one party that could lie about a payment,
+# which is exactly why this is operator config and never model input.
+rpc_url = "https://api.devnet.solana.com"
+
+# REQUIRED. Must match kiosk-charge's merchant_address, or every payment reads as a
+# mismatch and nothing is ever delivered (fail-closed, but useless).
+merchant_address = "YOUR_MERCHANT_PUBKEY"
+
+# Optional. Mint to expect. Defaults to mainnet USDC. Must match the charge mint.
+usdc_mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+
+# Optional. Commitment gating the verdict: processed | confirmed | finalized.
+#   confirmed (default) — supermajority voted, ~1-2s, reorg unlikely. Good default.
+#   finalized           — economically irreversible, adds ~13s. Use for high-value items.
+#   processed           — NOT recommended for actuation; can still be rolled back.
+finality = "confirmed"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# kiosk-attest (T1) — unsigned, hash-chained memo attestations. Read-only RPC.
+# ─────────────────────────────────────────────────────────────────────────────
+[plugins.kiosk-attest.config]
+# REQUIRED. Solana JSON-RPC endpoint (same guidance as kiosk-watch).
+rpc_url = "https://api.devnet.solana.com"
+
+# REQUIRED. Human device id written into every memo as `dev`.
+device_id = "kiosk-01"
+
+# REQUIRED. Durable nonce account pubkey. The attestation chain is scanned here, and
+# the nonce is what lets an attestation built offline stay submittable later.
+nonce_account = "YOUR_NONCE_ACCOUNT_PUBKEY"
+
+# REQUIRED. Nonce authority / fee payer pubkey. Must own the nonce account above.
+# This is a PUBLIC key. The matching private key belongs to your external signer and
+# must never appear in this file or anywhere ZeroClaw can read it.
+nonce_authority = "YOUR_NONCE_AUTHORITY_PUBKEY"
+
+# Optional but strongly recommended. "metric:min:max" — the allowlist AND the bounds.
+# A metric not listed is refused; a value outside its range is refused outright rather
+# than clamped, so the chain never records a plausible-looking lie.
+allowed_metrics = "temp_c:-40:85, humidity:0:100"
+
+# Optional. Custody tier. Default t1 (build unsigned, sign nowhere).
+custody_mode = "t1"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SOP engine — needed for sops/ to load. See sops/ and docs/threat-model.md.
+# ─────────────────────────────────────────────────────────────────────────────
+[sop]
+# Point this at this repo's sops/ directory (absolute path), or copy the three SOP
+# folders into <your-zeroclaw-workspace>/sops/ and omit this key.
+sops_dir = "/absolute/path/to/proofkiosk/sops"
+
+# Enforce the per-step `allow-tools:` / `deny-tools:` scopes in the SOPs as real
+# filters instead of advisory hints. Off by default upstream; on is the safer posture
+# for a machine that can actuate hardware.
+step_scope_enforce = true
