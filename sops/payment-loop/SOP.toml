@@ -1,0 +1,24 @@
+# ProofKiosk — payment loop SOP (EXAMPLE)
+#
+# Cron polls kiosk_watch for a specific charge; the relay pulse fires for EXACTLY
+# one condition: kiosk_watch returned a verified payment. Every other outcome
+# (pending, expired, mismatch, RPC failure) leaves the relay shut.
+#
+# Steps live in SOP.md under `## Steps` — this runtime parses them from Markdown,
+# not from TOML. Validate with:
+#   zeroclaw sop validate proofkiosk-payment-loop
+
+[sop]
+name = "proofkiosk-payment-loop"
+description = "Fire the delivery relay only after an on-chain USDC payment is verified."
+version = "0.1.0"
+# Deterministic: steps run sequentially with no LLM round-trip between them, so
+# the relay decision comes from the routing guard, never from model prose.
+deterministic = true
+# One outstanding charge at a time; a trigger that cannot admit is deferred.
+max_concurrent = 1
+admission_policy = "hold"
+
+[[triggers]]
+type = "cron"
+expression = "*/10 * * * * *"   # poll every 10s while a charge is outstanding
