@@ -1,6 +1,9 @@
 target/
 *.wasm
 
+# scripts/stage-plugin.sh output: build artifacts assembled for `zeroclaw plugin install`.
+staged/
+
 # scripts/devnet-setup.sh writes throwaway test keypairs and a validator ledger here.
 .devnet/
 
