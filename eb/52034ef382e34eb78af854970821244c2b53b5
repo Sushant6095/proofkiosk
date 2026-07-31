@@ -1,0 +1,27 @@
+scripts/devnet-setup.sh
+  s_7021c90b94d92f::t_41eae586b39a25 1-111
+scripts/verify-no-network.sh
+  s_7021c90b94d92f::t_895ec1fc92d81a 1-50
+scripts/wasm-size.sh
+  s_7021c90b94d92f::t_ff94272d6ff40c 1-28
+skills/kiosk-qr/SKILL.md
+  s_7021c90b94d92f::t_1a6baacfd0b09b 1-40
+skills/kiosk-qr/render-qr.sh
+  s_7021c90b94d92f::t_fc680dc4ecea2e 1-29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "eb52034ef382e34eb78af854970821244c2b53b5",
+  "prompts": {},
+  "sessions": {
+    "s_7021c90b94d92f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fddfcab9-3c8b-40b7-939f-5b27c022cdb4",
+        "model": "claude-opus-5"
+      },
+      "human_author": "sushant-vyapar <sushant.jain@vyapar.com>"
+    }
+  }
+}
