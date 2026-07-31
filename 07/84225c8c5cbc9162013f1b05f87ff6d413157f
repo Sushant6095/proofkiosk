@@ -1,0 +1,47 @@
+crates/kiosk-core/Cargo.lock
+  s_7021c90b94d92f::t_96eb1a7e3e7dff 1-727
+crates/kiosk-core/Cargo.toml
+  s_7021c90b94d92f::t_9a5be53b0b972f 1-29
+crates/kiosk-core/src/b58.rs
+  s_7021c90b94d92f::t_31866256648391 1-138
+crates/kiosk-core/src/b64.rs
+  s_7021c90b94d92f::t_a99f97e8309480 1-133
+crates/kiosk-core/src/chain.rs
+  s_7021c90b94d92f::t_6d95d7f1cc2af0 1-206
+crates/kiosk-core/src/lib.rs
+  s_7021c90b94d92f::t_776daf34ec23d9 1-23
+crates/kiosk-core/src/memo.rs
+  s_7021c90b94d92f::t_9ef76788853266 1-79
+crates/kiosk-core/src/msg.rs
+  s_7021c90b94d92f::t_4f558d4164dbf2 1-236
+crates/kiosk-core/src/nonce.rs
+  s_7021c90b94d92f::t_d939f57f5ce7cf 1-146
+crates/kiosk-core/src/pay.rs
+  s_7021c90b94d92f::t_bab3d878989dc5 1-264
+crates/kiosk-core/src/rpc.rs
+  s_7021c90b94d92f::t_f067e40f77cf1c 1-245
+crates/kiosk-core/src/shape.rs
+  s_7021c90b94d92f::t_cb07788928ba82 1-47
+crates/kiosk-core/src/shortvec.rs
+  s_7021c90b94d92f::t_87ba0074f0a2cd 1-80
+crates/kiosk-core/tests/fuzz.rs
+  s_7021c90b94d92f::t_c020a3c810f1aa 1-65
+crates/kiosk-core/tests/props.rs
+  s_7021c90b94d92f::t_8bb86ace44d478 1-46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "0784225c8c5cbc9162013f1b05f87ff6d413157f",
+  "prompts": {},
+  "sessions": {
+    "s_7021c90b94d92f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fddfcab9-3c8b-40b7-939f-5b27c022cdb4",
+        "model": "claude-opus-5"
+      },
+      "human_author": "sushant-vyapar <sushant.jain@vyapar.com>"
+    }
+  }
+}
