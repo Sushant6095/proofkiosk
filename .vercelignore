@@ -1,0 +1,6 @@
+# The deployed site is a single static file (docs/index.html). Everything the
+# Rust side produces is build output and must never be uploaded — plugins/*/target
+# alone is ~158 MB.
+target/
+staged/
+.git/

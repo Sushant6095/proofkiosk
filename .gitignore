@@ -8,3 +8,4 @@ staged/
 .devnet/
 
 .DS_Store
+.vercel

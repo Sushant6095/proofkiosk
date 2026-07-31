@@ -337,10 +337,15 @@ review trail; nothing here is copied from another submission.
 
 **Showcase post:** `<Discord link TBD>`
 
-**Interactive explainer:** [`docs/index.html`](docs/index.html) ·
-live at **https://sushant6095.github.io/proofkiosk/**
-— an interactive explainer of the flow. The animated sale is an **EXPLAINER, not the
-demo**; the real running demo is the video linked above.
+**🔗 Live explainer: https://proofkiosk.vercel.app** — an interactive walkthrough of the
+flow. The animated sale is an **EXPLAINER, not the demo**: it is a scripted illustration
+with no agent, chain, or hardware running on the page. The real running demo is the video
+above.
+
+Source: [`docs/index.html`](docs/index.html) — a single self-contained file, no build step
+and no external assets. Also mirrored on GitHub Pages at
+<https://sushant6095.github.io/proofkiosk/>; Vercel is the primary URL and both serve the
+same file from `main`.
 
 **Built on:** [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw) v0.8.3 (WIT
 `tool-plugin` world v0, vendored in [`wit/v0`](wit/v0)). Read-only Solana skill worth
