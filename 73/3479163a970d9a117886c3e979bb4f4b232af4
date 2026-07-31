@@ -1,0 +1,23 @@
+config/example.toml
+  s_7021c90b94d92f::t_745a7855e2eade 1-108
+docs/threat-model.md
+  s_7021c90b94d92f::t_347dc7008417c2 1-181
+hardware/wiring.md
+  s_7021c90b94d92f::t_c73a17610a886c 1-121
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "733479163a970d9a117886c3e979bb4f4b232af4",
+  "prompts": {},
+  "sessions": {
+    "s_7021c90b94d92f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fddfcab9-3c8b-40b7-939f-5b27c022cdb4",
+        "model": "claude-opus-5"
+      },
+      "human_author": "sushant-vyapar <sushant.jain@vyapar.com>"
+    }
+  }
+}
