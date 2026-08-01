@@ -84,12 +84,26 @@ and never enters ZeroClaw's config. See [`docs/threat-model.md`](../../docs/thre
 
 | Arg | Meaning |
 |---|---|
-| `item_id` | Item from `price_list`. Preferred path. |
-| `amount_usdc` | Free amount, decimal string. Only when no `item_id`, always bounded by `max_amount_usdc`. |
+| `item_id` | Item from `price_list`. Preferred path, and the **only actuation-eligible** one. |
+| `amount_usdc` | Free amount, decimal string. Only when no `item_id`, always bounded by `max_amount_usdc`. **Invoicing only.** |
 | `note` | Short free text shown in the wallet. Percent-encoded, inert. |
 
 That is the entire model-facing surface. There is no argument that reaches the recipient,
 the mint, or the cap.
+
+**The two charge classes differ in what they can trigger.** `kiosk-watch` derives the
+amount it verifies from the same `price_list` this plugin prices from, so only an
+item-priced charge has an operator-set number to check a payment against:
+
+| Created with | `kiosk_watch` can verify | Can gate a relay |
+|---|---|---|
+| `item_id` | yes | **yes** |
+| `amount_usdc` | **no** — refused with a specific error | **no** |
+
+A free-amount charge is a perfectly good invoice — show the QR, take the money — but
+nothing downstream will actuate on it, by design. If you want a custom amount to open a
+door, add it to `price_list` as an item instead. See
+[`docs-local/DECISIONS.md`](../../docs-local/DECISIONS.md) (2026-08-02).
 
 ## Worked example
 

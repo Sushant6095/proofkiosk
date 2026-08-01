@@ -123,10 +123,18 @@ impl ChargeConfig {
 #[derive(serde::Deserialize, Debug, Default)]
 #[serde(deny_unknown_fields)]
 pub struct ChargeArgs {
-    /// Item id from the operator's price list (preferred).
+    /// Item id from the operator's price list. **Item-priced charges are the
+    /// only actuation-eligible class** — `kiosk_watch` re-derives the amount
+    /// from the same `price_list` and can therefore gate a relay on it.
     pub item_id: Option<String>,
     /// Free amount in USDC as a decimal string; only when no item_id, and
     /// always bounded by the operator's `max_amount_usdc`.
+    ///
+    /// **Invoicing-only.** A free-amount charge carries no item id, so there is
+    /// no operator-set price for `kiosk_watch` to verify against; it refuses
+    /// such a charge outright rather than accepting a caller-supplied number.
+    /// Use this to bill a custom amount a human settles — never to gate
+    /// hardware. See `docs-local/DECISIONS.md` (2026-08-02).
     pub amount_usdc: Option<String>,
     /// Short free-text note shown in the wallet (percent-encoded, inert).
     pub note: Option<String>,

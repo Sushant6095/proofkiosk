@@ -47,7 +47,7 @@ mod component {
     struct ExecuteArgs {
         mode: Option<String>,
         reference: Option<String>,
-        expected_amount: Option<String>,
+        item_id: Option<String>,
         window_s: Option<u64>,
         device_address: Option<String>,
         max_silence_s: Option<u64>,
@@ -71,12 +71,14 @@ mod component {
 
         fn description() -> String {
             "Check whether a kiosk payment has been received on-chain before delivering an item. \
-             Pass the `reference` and `expected_amount` from the charge; returns success=true ONLY \
-             when a Solana payment of that exact USDC amount to the operator's address has landed \
-             at the configured finality — deliver only then. success=false means pending, expired, \
-             or a mismatch (do not deliver). Set mode=\"heartbeat\" with device_address and \
-             max_silence_s to instead check the device's attestation freshness. The recipient, \
-             mint, and RPC endpoint are fixed by operator config and cannot be set here. State the \
+             Pass the `reference` and the `item_id` from the charge; returns success=true ONLY \
+             when a Solana payment of that item's configured USDC price to the operator's address \
+             has landed at the configured finality — deliver only then. success=false means \
+             pending, expired, or a mismatch (do not deliver). Set mode=\"heartbeat\" with \
+             device_address and max_silence_s to instead check the device's attestation freshness. \
+             The price, recipient, mint, and RPC endpoint are all fixed by operator config and \
+             cannot be set here — there is no amount argument. Charges created for a free amount \
+             rather than a catalog item are invoicing-only and cannot be verified here. State the \
              result plainly (paid / still pending / mismatch) before any downstream action such as \
              releasing an item."
                 .to_string()
@@ -95,9 +97,9 @@ mod component {
                         "type": "string",
                         "description": "Payment mode: the Solana Pay reference pubkey from the charge."
                     },
-                    "expected_amount": {
+                    "item_id": {
                         "type": "string",
-                        "description": "Payment mode: expected USDC amount as a decimal string, e.g. \"1.5\"."
+                        "description": "Payment mode: the item id this charge was created for. Its price is read from operator config; there is no amount argument."
                     },
                     "window_s": {
                         "type": "integer",
@@ -157,7 +159,7 @@ mod component {
             let watch_args = WatchArgs {
                 mode: parsed.mode.clone(),
                 reference: parsed.reference,
-                expected_amount: parsed.expected_amount,
+                item_id: parsed.item_id,
                 window_s: parsed.window_s,
                 device_address: parsed.device_address,
                 max_silence_s: parsed.max_silence_s,
@@ -240,7 +242,7 @@ mod component {
         const ALLOWED: [&str; 7] = [
             "mode",
             "reference",
-            "expected_amount",
+            "item_id",
             "window_s",
             "device_address",
             "max_silence_s",

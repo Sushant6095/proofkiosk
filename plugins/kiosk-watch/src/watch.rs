@@ -34,6 +34,12 @@ pub struct WatchConfig {
     pub rpc_url: String,
     pub merchant_address: String,
     pub usdc_mint: String,
+    /// item id -> decimal amount string, parsed from `price_list`
+    /// (`"cold_drink:1.5, snack:0.75"`) — the SAME key and format
+    /// `kiosk-charge` parses, so the price that gates the relay is the price
+    /// the customer was quoted. This is the only source of the expected amount;
+    /// the model supplies an item id and nothing else.
+    pub price_list: HashMap<String, String>,
     /// Solana commitment gating the answer: processed | confirmed | finalized.
     pub finality: String,
 }
@@ -62,6 +68,23 @@ impl WatchConfig {
         if b58::decode_pubkey(&usdc_mint).is_none() {
             return Err(WatchError::Config("usdc_mint is not a valid pubkey".into()));
         }
+        // Same key, same format as ChargeConfig. Each price is parsed here so an
+        // operator typo fails at config load rather than at actuation time.
+        let mut price_list = HashMap::new();
+        if let Some(raw) = section.get("price_list") {
+            for entry in raw.split(',').map(str::trim).filter(|e| !e.is_empty()) {
+                let (item, amount) = entry
+                    .split_once(':')
+                    .ok_or_else(|| WatchError::Config(format!("bad price entry `{entry}`")))?;
+                let (item, amount) = (item.trim(), amount.trim());
+                if decimal_to_base_units(amount, USDC_DECIMALS).is_none() {
+                    return Err(WatchError::Config(format!(
+                        "price `{amount}` for item `{item}` is not a valid USDC decimal"
+                    )));
+                }
+                price_list.insert(item.to_string(), amount.to_string());
+            }
+        }
         let finality = section
             .get("finality")
             .filter(|v| !v.is_empty())
@@ -76,6 +99,7 @@ impl WatchConfig {
             rpc_url,
             merchant_address,
             usdc_mint,
+            price_list,
             finality,
         })
     }
@@ -92,8 +116,11 @@ pub struct WatchArgs {
     pub mode: Option<String>,
     /// Payment mode: the Solana Pay reference pubkey from the charge.
     pub reference: Option<String>,
-    /// Payment mode: expected amount as a decimal USDC string (e.g. "1.5").
-    pub expected_amount: Option<String>,
+    /// Payment mode: the item id this charge was created for. The expected
+    /// amount is looked up from the operator's `price_list` — there is
+    /// deliberately NO amount field here, so the number the relay gates on is
+    /// unreachable from the prompt (see docs-local/DECISIONS.md, 2026-08-02).
+    pub item_id: Option<String>,
     /// Payment mode: acceptance window in seconds; a matching signature older
     /// than this before `now` is treated as Expired, not Paid.
     pub window_s: Option<u64>,
@@ -219,12 +246,31 @@ pub fn verify_payment<T: RpcTransport>(
         .as_deref()
         .filter(|r| b58::decode_pubkey(r).is_some())
         .ok_or_else(|| WatchError::Args("reference must be a valid pubkey".into()))?;
-    let expected_amount = args
-        .expected_amount
-        .as_deref()
-        .ok_or_else(|| WatchError::Args("expected_amount is required".into()))?;
-    let expected_units = decimal_to_base_units(expected_amount, USDC_DECIMALS)
-        .ok_or_else(|| WatchError::Args("expected_amount is not a valid USDC decimal".into()))?;
+    // The amount the relay gates on comes from operator config, keyed by an item
+    // the caller may only *choose*, never *write*. A charge with no item id is a
+    // free-amount charge: invoicing-only, and never actuation-eligible.
+    let item_id = args.item_id.as_deref().ok_or_else(|| {
+        WatchError::Args(
+            "item_id is required: this verifies item-priced charges only. A free-amount \
+             charge (kiosk_charge amount_usdc) is invoicing-only and is never \
+             actuation-eligible."
+                .into(),
+        )
+    })?;
+    let expected_amount = cfg.price_list.get(item_id).ok_or_else(|| {
+        WatchError::Args(format!(
+            "unknown item `{item_id}`: not in the operator price list"
+        ))
+    })?;
+    // Prices are validated at config load, so this cannot fail in practice; it
+    // stays a checked error rather than an unwrap because a panic in a component
+    // is a failure mode with no error message.
+    let expected_units =
+        decimal_to_base_units(expected_amount, USDC_DECIMALS).ok_or_else(|| {
+            WatchError::Config(format!(
+                "price for item `{item_id}` is not a valid USDC decimal"
+            ))
+        })?;
 
     let client = RpcClient::new(transport);
 
