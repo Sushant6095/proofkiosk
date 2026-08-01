@@ -1,0 +1,50 @@
+plugins/kiosk-charge/src/charge.rs
+  s_d4e40183daad6c::t_31e8bd340ba4a8 126-128,132-137
+plugins/kiosk-watch/src/lib.rs
+  s_d4e40183daad6c::t_a8e3e5b6e62de8 245
+  s_d4e40183daad6c::t_ffb0eefbe3e8b6 100,102
+  s_d4e40183daad6c::t_840e6375a47fb0 74-81
+  s_d4e40183daad6c::t_4c7eb45c73f987 50
+  s_d4e40183daad6c::t_7685b6640027a9 162
+plugins/kiosk-charge/README.md
+  s_d4e40183daad6c::t_3b2933c149aace 87-88,94-106
+  s_d4e40183daad6c::t_690bd1cfac40bf 107
+plugins/kiosk-watch/tests/watch.rs
+  s_d4e40183daad6c::t_856f9a92a11911 101-102,365,373-448
+  s_d4e40183daad6c::t_69591859fa74fe 151
+  s_d4e40183daad6c::t_135886593d7d6b 68-71,77,90,96-100
+  s_d4e40183daad6c::t_07015411da875b 463
+  s_d4e40183daad6c::t_0cce196ea93204 103
+  s_d4e40183daad6c::t_e825d3243c879d 449
+docs-local/DECISIONS.md
+  s_d4e40183daad6c::t_d4b99fe2d71e38 1-53
+plugins/kiosk-watch/README.md
+  s_d4e40183daad6c::t_bb28ae1d431b5b 93,95-111
+  s_d4e40183daad6c::t_144cab07c93efd 122
+  s_d4e40183daad6c::t_7881238a006a9d 29-31
+  s_d4e40183daad6c::t_14bcba1434ecf5 144-146,148
+  s_d4e40183daad6c::t_626988a5b8eba9 65,69,75
+plugins/kiosk-watch/src/watch.rs
+  s_d4e40183daad6c::t_6dca0176e3f251 37-42
+  s_d4e40183daad6c::t_50a80d3e2a96f4 119-123
+  s_d4e40183daad6c::t_df98cc5b2b7e04 249-267
+  s_d4e40183daad6c::t_a012a2bf4e256f 268-273
+  s_d4e40183daad6c::t_7f227e7df0fb3a 102
+  s_d4e40183daad6c::t_2412a6f3b63f03 71-87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "751680cb6421aa8a46eecd54799f3d2a05a562fe",
+  "prompts": {},
+  "sessions": {
+    "s_d4e40183daad6c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5a5651de-86c4-4320-b1a9-751a8456ce34",
+        "model": "claude-opus-5"
+      },
+      "human_author": "sushant6095 <sushant.jain@vyapar.com>"
+    }
+  }
+}
