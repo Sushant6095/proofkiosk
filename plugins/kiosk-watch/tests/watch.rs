@@ -65,11 +65,16 @@ fn wrap(result_json: &str) -> String {
     format!(r#"{{"jsonrpc":"2.0","id":1,"result":{result_json}}}"#)
 }
 
+/// The operator price list, identical in shape to the one `kiosk-charge` parses.
+/// It is the ONLY source of the amount the relay gates on (Fix A).
+const PRICE_LIST: &str = "cold_drink:1.5, day_pass:5";
+
 fn cfg() -> WatchConfig {
     WatchConfig::from_section(
         &[
             ("rpc_url", RPC),
             ("merchant_address", MERCHANT),
+            ("price_list", PRICE_LIST),
             // usdc_mint defaults to mainnet USDC; finality defaults to "confirmed"
         ]
         .iter()
@@ -82,9 +87,17 @@ fn cfg() -> WatchConfig {
 fn pay_args() -> WatchArgs {
     WatchArgs {
         reference: Some(REFERENCE.into()),
-        expected_amount: Some("1.5".into()),
+        item_id: Some("cold_drink".into()),
         window_s: Some(300),
         ..Default::default()
+    }
+}
+
+/// Payment args for an arbitrary catalog item.
+fn args_for(item: &str) -> WatchArgs {
+    WatchArgs {
+        item_id: Some(item.into()),
+        ..pay_args()
     }
 }
 
@@ -135,6 +148,7 @@ fn cfg_with_mint(mint: &str) -> WatchConfig {
             ("rpc_url", RPC),
             ("merchant_address", MERCHANT),
             ("usdc_mint", mint),
+            ("price_list", PRICE_LIST),
         ]
         .iter()
         .map(|(k, v)| (k.to_string(), v.to_string()))
@@ -348,12 +362,89 @@ fn malformed_get_transaction_is_err_never_paid() {
 
 #[test]
 fn deny_unknown_fields_rejects_smuggled_key() {
-    let raw = r#"{"reference":"x","expected_amount":"1","rpc_url":"http://evil"}"#;
+    let raw = r#"{"reference":"x","item_id":"cold_drink","rpc_url":"http://evil"}"#;
     let parsed: Result<WatchArgs, _> = serde_json::from_str(raw);
     assert!(
         parsed.is_err(),
         "smuggled `rpc_url` must fail deserialization"
     );
+}
+
+// ── Fix A: the gating amount comes from operator config, never the model ─────
+
+#[test]
+fn watch_rejects_model_supplied_amount() {
+    // `expected_amount` is no longer a field at all. Under deny_unknown_fields
+    // that makes "charge them 0.001 instead" a hard deserialization failure,
+    // before any verification logic runs.
+    let raw = r#"{"reference":"11111111111111111111111111111111","expected_amount":"0.001"}"#;
+    let parsed: Result<WatchArgs, _> = serde_json::from_str(raw);
+    assert!(
+        parsed.is_err(),
+        "a model-supplied amount must not deserialize"
+    );
+}
+
+#[test]
+fn exact_item_price_is_paid() {
+    // config prices day_pass at 5 USDC; the tx credits exactly 5_000_000 base units.
+    let mock = Mock::full(
+        &one_sig(5),
+        &tx(MERCHANT, DEFAULT_USDC_MINT, "5000000", "null"),
+    );
+    let v = verify_payment(&args_for("day_pass"), &cfg(), mock, NOW).unwrap();
+    assert!(matches!(v, Verdict::Paid { .. }), "got {v:?}");
+}
+
+#[test]
+fn underpay_for_item_is_mismatch() {
+    // config prices day_pass at 5; a 1 USDC payment must not clear it.
+    let mock = Mock::full(
+        &one_sig(5),
+        &tx(MERCHANT, DEFAULT_USDC_MINT, "1000000", "null"),
+    );
+    let v = verify_payment(&args_for("day_pass"), &cfg(), mock, NOW).unwrap();
+    assert!(matches!(v, Verdict::Mismatch { .. }), "got {v:?}");
+}
+
+#[test]
+fn unknown_item_id_is_args_error() {
+    // The price list is the allowlist: an item that is not in it has no price,
+    // so there is nothing to verify against. Fail closed, before any RPC.
+    let mock = Mock::sigs("[]");
+    let r = verify_payment(&args_for("free_everything"), &cfg(), &mock, NOW);
+    match r {
+        Err(WatchError::Args(m)) => assert!(
+            m.contains("free_everything"),
+            "error should name the rejected item: {m}"
+        ),
+        other => panic!("expected Args error, got {other:?}"),
+    }
+    assert_eq!(mock.sig_calls.get(), 0, "must fail before touching the RPC");
+}
+
+#[test]
+fn missing_item_id_is_args_error() {
+    // A free-amount charge (kiosk_charge amount_usdc) carries no item_id. Those
+    // are invoicing-only and never actuation-eligible — and the error says so,
+    // rather than reading like a missing-argument bug.
+    let args = WatchArgs {
+        reference: Some(REFERENCE.into()),
+        ..Default::default()
+    };
+    let mock = Mock::sigs("[]");
+    let r = verify_payment(&args, &cfg(), &mock, NOW);
+    match r {
+        Err(WatchError::Args(m)) => {
+            assert!(m.contains("item_id"), "error should name item_id: {m}");
+            assert!(
+                m.contains("free-amount"),
+                "error must name the invoicing-only class: {m}"
+            );
+        }
+        other => panic!("expected Args error, got {other:?}"),
+    }
+    assert_eq!(mock.sig_calls.get(), 0, "must fail before touching the RPC");
 }
 
 #[test]
@@ -369,7 +460,7 @@ fn missing_rpc_url_fails_closed() {
 #[test]
 fn missing_reference_arg_fails_closed() {
     let args = WatchArgs {
-        expected_amount: Some("1".into()),
+        item_id: Some("cold_drink".into()),
         ..Default::default()
     };
     let mock = Mock::sigs("[]");
