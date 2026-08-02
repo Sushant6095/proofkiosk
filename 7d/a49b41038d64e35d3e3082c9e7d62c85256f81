@@ -1,0 +1,47 @@
+plugins/kiosk-attest/tests/attest.rs
+  s_d4e40183daad6c::t_44aff9e3bef860 118-149
+sops/sensor-loop/SOP.md
+  s_d4e40183daad6c::t_4eb650d9a04ed6 46,48-50
+scripts/devnet-setup.sh
+  s_d4e40183daad6c::t_cd64a1e1ee8e6f 22-24
+  s_d4e40183daad6c::t_344a5e1ffe551e 98-100,105,113-119,122-125
+scripts/render-proofkiosk-concept.mjs
+  s_993bad143cc388::t_cb2b14b7cb36b2 3-12,16-21,29-57,59-71,73-90,93-108,111,113-118,121-128,132,137,139,143-151,159-161,164-183,186,188,190,194,196-252,254
+  s_993bad143cc388::t_312122953eae36 1-2,13-15,22-28,58,72,91-92,109-110,112,119-120,129-131,133-136,138,140-142,152-158,162-163,184-185,187,189,191-193,195,253
+README.md
+  s_d4e40183daad6c::t_83ab96b546af3f 29,104,213,358-361
+docs-local/DECISIONS.md
+  s_d4e40183daad6c::t_1fe09efb66a9f3 9-62
+scripts/build-handbook.mjs
+  s_993bad143cc388::t_a2375852020930 376
+  s_993bad143cc388::t_3f52986b6468fb 525-526
+  s_993bad143cc388::t_58a86a27d17ec0 360
+  s_993bad143cc388::t_33f39ecee30e2c 1-2,5-6,9-20,26-44,47-48,53-55,59-66,72-97,99-139,161-187,189-217,220-260,263-359,361-373,379-423,425-485,488-493,495-496,498-499,501-511,531-532
+  s_993bad143cc388::t_184c25e1df17b5 3-4,7-8,21-25,45-46,49-52,56-58,67-71,98,140-160,188,218-219,261-262,374-375,377-378,424,486-487,494,497,500,512-524,527-530
+config/example.toml
+  s_d4e40183daad6c::t_001674ab4c43ee 19-25,34-38,64-65,91-94,107-108
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "7da49b41038d64e35d3e3082c9e7d62c85256f81",
+  "prompts": {},
+  "sessions": {
+    "s_993bad143cc388": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fbc5f-dc52-7f52-a827-b74525f82452",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "sushant6095 <sushant.jain@vyapar.com>"
+    },
+    "s_d4e40183daad6c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5a5651de-86c4-4320-b1a9-751a8456ce34",
+        "model": "claude-opus-5"
+      },
+      "human_author": "sushant6095 <sushant.jain@vyapar.com>"
+    }
+  }
+}
