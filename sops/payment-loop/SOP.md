@@ -95,8 +95,10 @@ saying so is more useful than a config flag that pretends the trade-off went awa
   verifies the two agree, along with `device_authority == nonce_authority` — get that
   second one wrong and no marker ever authenticates, so single-use silently stops
   working.
-- Raise `finality` to `finalized` in `[plugins.kiosk-watch.config]` if you want economic
-  irreversibility before dispensing (adds ~13s).
+- `finality` is already `finalized` and cannot be lowered for a payment verdict — the
+  weaker commitments are refused rather than configurable. Budget ~13 s from payment to
+  verdict; that is the cost of not dispensing against a transaction that can be rolled
+  back.
 - `pin_ms` and the relay tool name depend on your hardware wiring (see the Pi build:
   `--features hardware,peripheral-rpi`, and `hardware/wiring.md`).
 
