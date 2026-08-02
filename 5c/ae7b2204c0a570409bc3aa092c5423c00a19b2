@@ -1,0 +1,31 @@
+plugins/kiosk-attest/src/lib.rs
+  s_d4e40183daad6c::t_4ab62ed1a09a88 53,76-78,91,97-98,147,188,196
+plugins/kiosk-attest/src/attest.rs
+  s_d4e40183daad6c::t_4b2b3d1f2d1d5d 215-224,226-234
+  s_d4e40183daad6c::t_ac868b4a62975d 97,105-109
+  s_d4e40183daad6c::t_8a2404f1dbbc81 289-303
+  s_d4e40183daad6c::t_4ab62ed1a09a88 225
+  s_d4e40183daad6c::t_70ce73703e0bc9 170-174
+  s_d4e40183daad6c::t_5ee441cb4e1a08 235
+plugins/kiosk-attest/tests/attest.rs
+  s_d4e40183daad6c::t_4ab62ed1a09a88 250-252
+  s_d4e40183daad6c::t_83e1364fa396ae 173-249,253-270
+  s_d4e40183daad6c::t_7a4dd48d96772c 98-117
+  s_d4e40183daad6c::t_e311733720cd73 271
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "5cae7b2204c0a570409bc3aa092c5423c00a19b2",
+  "prompts": {},
+  "sessions": {
+    "s_d4e40183daad6c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5a5651de-86c4-4320-b1a9-751a8456ce34",
+        "model": "claude-opus-5"
+      },
+      "human_author": "sushant6095 <sushant.jain@vyapar.com>"
+    }
+  }
+}
