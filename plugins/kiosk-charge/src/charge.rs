@@ -13,6 +13,10 @@ use kiosk_core::{b58, pay::TransferRequest, shape};
 /// (e.g. devnet USDC) — never the model.
 pub const DEFAULT_USDC_MINT: &str = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 pub const DEFAULT_MAX_AMOUNT: f64 = 100.0;
+/// Wallet-visible note length, in CHARACTERS. Bounded so a long note cannot
+/// crowd the token budget; counted in characters so truncation can never split
+/// a UTF-8 code point.
+pub const NOTE_MAX_CHARS: usize = 64;
 pub const USDC_DECIMALS: u8 = 6;
 
 #[derive(Debug)]
@@ -171,11 +175,13 @@ pub fn execute_charge(
     };
 
     let reference = b58::encode(&reference32);
-    let note = args.note.as_deref().map(|n| {
-        let mut n = n.to_string();
-        n.truncate(64);
-        n
-    });
+    // Count characters, not bytes. `String::truncate` panics when the byte
+    // index lands inside a multi-byte character, so a customer typing emoji
+    // would take down a plugin that gates hardware.
+    let note = args
+        .note
+        .as_deref()
+        .map(|n| n.chars().take(NOTE_MAX_CHARS).collect::<String>());
     let request = TransferRequest::new(
         &cfg.merchant_address,
         &amount,
