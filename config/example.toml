@@ -58,6 +58,25 @@ rpc_url = "https://api.devnet.solana.com"
 # mismatch and nothing is ever delivered (fail-closed, but useless).
 merchant_address = "YOUR_MERCHANT_PUBKEY"
 
+# REQUIRED to actuate. The SAME catalog kiosk-charge prices from — this is the ONLY
+# source of the amount the relay gates on. kiosk_watch takes an item_id and looks the
+# price up here; there is no amount argument, so the number gating your hardware is
+# never reachable from the prompt. Keep it byte-identical to kiosk-charge's price_list
+# or a real payment reads as a mismatch. `scripts/check-config.sh` checks that for you.
+#
+# Charges created for a free amount (kiosk-charge's amount_usdc) have no entry here and
+# are INVOICING-ONLY: kiosk_watch refuses them, so they can never gate a relay.
+price_list = "cold_drink:1.5, snack:0.75"
+
+# REQUIRED to actuate. The only signer whose fulfillment marker counts as proof that a
+# charge was already delivered — this is what makes delivery single-use.
+#
+# MUST EQUAL kiosk-attest's nonce_authority below. That is the fee payer, and only
+# required signer, of every marker kiosk-attest builds. Set these two to different
+# pubkeys and no marker will ever authenticate: single-use silently stops working and
+# a paid charge can be delivered on every poll. Checked by scripts/check-config.sh.
+device_authority = "YOUR_NONCE_AUTHORITY_PUBKEY"
+
 # Optional. Mint to expect. Defaults to mainnet USDC. Must match the charge mint.
 usdc_mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 
