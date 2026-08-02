@@ -43,9 +43,11 @@ memo on-chain: {v, dev, seq, ts, metric, val, prev}  (seq/prev link the chain)
   number, which is what `kiosk_attest` expects.
 - `ts` is deliberately omitted: this runtime has no `$.now` built-in, and
   `kiosk_attest` defaults `ts` to the current time when the argument is absent.
-- `metric` must be present in the operator's `metric_allowlist` and the value inside its
+- `metric` must be present in the operator's `allowed_metrics` and the value inside its
   configured bounds, or the plugin refuses to attest rather than clamping a bad reading
-  into a plausible lie.
+  into a plausible lie. The key is spelled `allowed_metrics` — an operator who writes
+  anything else gets an *empty* allowlist, which fails closed (every reading is refused)
+  but reads like the plugin is broken rather than misconfigured.
 
 ## Steps
 

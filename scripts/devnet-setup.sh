@@ -19,6 +19,9 @@ set -euo pipefail
 MODE="${MODE:-localnet}"
 DECIMALS=6
 MINT_AMOUNT="${MINT_AMOUNT:-1000}"        # test tokens minted to the wallet
+# Emitted into BOTH plugin config blocks: kiosk-charge prices from it and
+# kiosk-watch re-derives the gating amount from it, so they must not drift.
+PRICE_LIST="${PRICE_LIST:-cold_drink:1.5, snack:0.75}"
 WORKDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/.devnet"
 WALLET="$WORKDIR/merchant.json"
 VALIDATOR_PID=""
@@ -92,12 +95,14 @@ cat <<EOF
 
 ✔ ProofKiosk test environment ready ($MODE)
 
-Paste into your ZeroClaw config (values are TEST-ONLY, throwaway keys under .devnet/):
+Paste into your ZeroClaw config (values are TEST-ONLY, throwaway keys under .devnet/).
+The two price_list lines must stay identical and device_authority must equal
+kiosk-attest's nonce_authority — run ./scripts/check-config.sh afterwards to confirm.
 
 [plugins.kiosk-charge.config]
 merchant_address = "$MERCHANT"
 usdc_mint        = "$MINT"
-price_list       = "cold_drink:1.5, snack:0.75"
+price_list       = "$PRICE_LIST"
 max_amount_usdc  = "10"
 label            = "Kiosk 01 (test)"
 
@@ -105,7 +110,17 @@ label            = "Kiosk 01 (test)"
 rpc_url          = "$RPC_URL"
 merchant_address = "$MERCHANT"
 usdc_mint        = "$MINT"
-finality         = "confirmed"
+# Same catalog as above: this is the ONLY source of the amount the relay gates on.
+price_list       = "$PRICE_LIST"
+# The only signer whose fulfillment marker counts. MUST equal kiosk-attest's
+# nonce_authority, or single-use delivery silently stops working.
+device_authority = "$MERCHANT"
+# Payment verification requires "finalized"; weaker commitments are refused.
+finality         = "finalized"
 
 Merchant keypair: $WALLET
+  (also used as the device/nonce authority above for this test setup)
+
+Next:
+  ./scripts/check-config.sh <your-config.toml>   # authorities + price lists agree
 EOF

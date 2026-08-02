@@ -16,6 +16,13 @@
 #
 # Placeholder convention: values in CAPS are yours to fill in. Run
 # `scripts/devnet-setup.sh` to generate real devnet/localnet values.
+#
+# ⚠️  NETWORK CONSISTENCY. `rpc_url` and `usdc_mint` must name the SAME network. A
+# devnet endpoint paired with the mainnet USDC mint is the easy mistake, and it is a
+# silent one: the mint simply does not exist on devnet, so no payment can ever credit
+# it and every verification returns "no USDC credit to the merchant was found". Nothing
+# errors at startup — the kiosk just never delivers. This file is DEVNET throughout;
+# each mint line carries its mainnet counterpart commented out beside it.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # kiosk-charge (T1) — builds the Solana Pay charge. Zero network, zero secrets.
@@ -24,9 +31,11 @@
 # REQUIRED. Base58 32-byte pubkey where funds land. The only required key.
 merchant_address = "YOUR_MERCHANT_PUBKEY"
 
-# Optional. SPL mint to charge in. Defaults to mainnet USDC.
-# Use the mint printed by scripts/devnet-setup.sh when testing.
-usdc_mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+# Optional. SPL mint to charge in. MUST match the network in kiosk-watch's rpc_url.
+# DEVNET (this file): Circle's devnet USDC. `scripts/devnet-setup.sh` instead mints its
+# own throwaway test token and prints it — use whichever you funded.
+usdc_mint = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+# MAINNET: usdc_mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 
 # Optional. Catalog: "item_id:usdc_amount" pairs. An item the model names that is not
 # in this list is refused ("unknown item"), so the catalog is the allowlist.
@@ -52,6 +61,8 @@ label = "Kiosk 01"
 # endpoint reports, so point it somewhere you trust — your own validator, or a
 # reputable provider. A malicious RPC is the one party that could lie about a payment,
 # which is exactly why this is operator config and never model input.
+# DEVNET (this file). MAINNET: https://api.mainnet-beta.solana.com — and if you change
+# this line you MUST change every usdc_mint in this file to match.
 rpc_url = "https://api.devnet.solana.com"
 
 # REQUIRED. Must match kiosk-charge's merchant_address, or every payment reads as a
@@ -77,8 +88,10 @@ price_list = "cold_drink:1.5, snack:0.75"
 # a paid charge can be delivered on every poll. Checked by scripts/check-config.sh.
 device_authority = "YOUR_NONCE_AUTHORITY_PUBKEY"
 
-# Optional. Mint to expect. Defaults to mainnet USDC. Must match the charge mint.
-usdc_mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+# Optional. Mint to expect. Must match the charge mint AND this rpc_url's network.
+# DEVNET (this file):
+usdc_mint = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+# MAINNET: usdc_mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 
 # Optional. Commitment gating the verdict. Default and ONLY accepted value for payment
 # verification: "finalized" — economically irreversible. A dispensed item cannot be
@@ -91,7 +104,8 @@ finality = "finalized"
 # kiosk-attest (T1) — unsigned, hash-chained memo attestations. Read-only RPC.
 # ─────────────────────────────────────────────────────────────────────────────
 [plugins.kiosk-attest.config]
-# REQUIRED. Solana JSON-RPC endpoint (same guidance as kiosk-watch).
+# REQUIRED. Solana JSON-RPC endpoint (same guidance as kiosk-watch). Same network as
+# every other rpc_url in this file — a nonce account exists on one network only.
 rpc_url = "https://api.devnet.solana.com"
 
 # REQUIRED. Human device id written into every memo as `dev`.

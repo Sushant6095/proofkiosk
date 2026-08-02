@@ -115,6 +115,38 @@ fn memo_text(out: &AttestOutput) -> String {
     String::from_utf8(ix.data.clone()).expect("memo is utf-8")
 }
 
+#[test]
+fn the_allowlist_key_is_allowed_metrics_and_a_misspelling_fails_closed() {
+    // The sensor SOP used to document this key as `metric_allowlist`, which the
+    // code never reads. An operator following the docs got an EMPTY allowlist:
+    // fail-closed (every reading refused), but it reads like a broken plugin
+    // rather than a typo. Pin both halves — the real key works, and the wrong
+    // one refuses rather than silently permitting anything.
+    let with_wrong_key: HashMap<String, String> = [
+        ("rpc_url", RPC),
+        ("device_id", "kiosk01"),
+        ("nonce_account", NONCE_ACCOUNT),
+        ("nonce_authority", NONCE_AUTHORITY),
+        ("metric_allowlist", "temp_c:-40:85"),
+    ]
+    .iter()
+    .map(|(k, v)| (k.to_string(), v.to_string()))
+    .collect();
+    let cfg_wrong = AttestConfig::from_section(&with_wrong_key).unwrap();
+    assert!(
+        cfg_wrong.allowed_metrics.is_empty(),
+        "an unrecognised key must not populate the allowlist"
+    );
+    let r = execute_attest(&reading("temp_c", 4.2), &cfg_wrong, fresh_chain(), NOW);
+    assert!(
+        matches!(r, Err(AttestError::Rejected(_))),
+        "a misspelled allowlist key must refuse every reading, got {r:?}"
+    );
+
+    // The documented key does populate it.
+    assert_eq!(cfg().allowed_metrics.len(), 2);
+}
+
 // ── injection drills (first) ─────────────────────────────────────────────────
 
 #[test]

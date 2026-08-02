@@ -26,7 +26,7 @@ run yet.
 | — priced from operator config, not the model | ✅ **Runs today** | The gating amount is looked up from `price_list` by `item_id`; a model-supplied amount cannot reach the gate. Free-amount charges are invoicing-only and structurally never actuation-eligible. |
 | — replay-proof | ✅ **Runs today** | A second fulfillment of the same reference returns `AlreadyFulfilled`, driven by an **authenticated** on-chain marker, not local state. |
 | — bounded against a reference-poisoning DoS | ✅ **Runs today** | The signature scan and marker authentication are both hard-capped (`SIG_LIMIT`, `MARKER_AUTH_LIMIT`), so a public reference cannot be flooded to exhaust the scan. |
-| Host test suite, no network in any test | ✅ **Runs today** | **127 tests** across four crates; all RPC is mocked through a one-method transport seam. |
+| Host test suite, no network in any test | ✅ **Runs today** | **142 tests** across four crates; all RPC is mocked through a one-method transport seam. |
 | `finalized`-only gate for actuation | ✅ **Runs today** | A payment verdict requires `finalized` and refuses `confirmed`/`processed` outright; the default is `finalized`. The weaker commitments stay legal for heartbeat mode, which does not actuate. |
 | SOP-driven relay actuation | 🚧 **Roadmap** | The SOPs validate and their routing is verified against the runtime, but the guard predicate does not resolve: ZeroClaw's routing payload carries a step's output *string*, not a structured field. Fails closed (relay stays shut), so the loop does not dispense. See [`sops/payment-loop/SOP.md`](sops/payment-loop/SOP.md). |
 | Attestation landing + finalizing on chain | 🚧 **Roadmap** | `kiosk-attest` builds a correct **unsigned** durable-nonce memo transaction (24 tests). Nothing in this repo signs or submits it, and no attestation has been observed landing on chain. |
@@ -101,7 +101,7 @@ None of these is asserted on faith:
   than trivially pass.
 - The attestation transaction is asserted to contain **only** the Memo and System
   programs, by inspecting the compiled program-id set. A transfer is not expressible.
-- Every fail-closed behavior is a host test. 127 of them, RPC mocked, no network.
+- Every fail-closed behavior is a host test. 142 of them, RPC mocked, no network.
 
 ## Custody tiers, and why each component sits where it does
 
@@ -210,7 +210,7 @@ rustup target add wasm32-wasip2
 git clone https://github.com/Sushant6095/proofkiosk.git && cd proofkiosk
 
 for d in crates/kiosk-core plugins/kiosk-charge plugins/kiosk-watch plugins/kiosk-attest; do
-  (cd "$d" && cargo test)          # 127 tests total, no network
+  (cd "$d" && cargo test)          # 142 tests total, no network
 done
 
 ./scripts/stage-plugin.sh          # -> staged/{kiosk-charge,kiosk-watch,kiosk-attest}/
@@ -355,10 +355,10 @@ All green, **no network in any test**.
 | Component | Tests | Clippy `-D warnings` | rustfmt | wasm32-wasip2 |
 |---|---|---|---|---|
 | kiosk-core | 55 (incl. property + fuzz) | clean | clean | — (rlib) |
-| kiosk-charge | 12 | clean | clean | 210 KB ✔ <250 KB |
-| kiosk-watch | 36 | clean | clean | 356 KB (bundles HTTP/TLS) |
-| kiosk-attest | 24 | clean | clean | 389 KB (bundles HTTP/TLS) |
-| **total** | **127** | **clean** | **clean** | `scripts/wasm-size.sh` |
+| kiosk-charge | 16 | clean | clean | 210 KB ✔ <250 KB |
+| kiosk-watch | 46 | clean | clean | 356 KB (bundles HTTP/TLS) |
+| kiosk-attest | 25 | clean | clean | 389 KB (bundles HTTP/TLS) |
+| **total** | **142** | **clean** | **clean** | `scripts/wasm-size.sh` |
 
 ## Repo map
 
