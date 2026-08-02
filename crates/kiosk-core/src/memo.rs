@@ -10,6 +10,13 @@ use crate::b58;
 /// SPL Memo v2 program id (base58).
 pub const MEMO_PROGRAM_ID_B58: &str = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr";
 
+/// Tag marking an attestation memo as a delivery-fulfillment marker: written by
+/// `kiosk-attest`, recognised by `kiosk-watch`. It lives here because it is a
+/// wire contract between two plugins — one definition, so the writer and the
+/// reader cannot drift. Versioned (`1`) so a format change cannot cause an old
+/// marker to be reinterpreted under new rules.
+pub const FULFILLMENT_TAG: &str = "PKFUL1";
+
 /// One account reference within an instruction.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AccountMeta {
