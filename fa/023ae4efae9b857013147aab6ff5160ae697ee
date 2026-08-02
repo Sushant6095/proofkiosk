@@ -1,0 +1,36 @@
+plugins/kiosk-watch/src/watch.rs
+  s_d4e40183daad6c::t_0f8de7bf75ba81 103-113
+  s_d4e40183daad6c::t_9302ae9bfcded7 236-238
+  s_d4e40183daad6c::t_af549300e1be9f 376-379
+  s_d4e40183daad6c::t_9d3d0277c3d7a4 129
+  s_d4e40183daad6c::t_b4d32ba89b4471 174-178
+  s_d4e40183daad6c::t_1fd400ae639e02 33-36
+  s_d4e40183daad6c::t_c610568d3873e0 51-57
+  s_d4e40183daad6c::t_61685e4dc62653 310-321,332-334,336-354,358-375,380-421,423-473
+  s_d4e40183daad6c::t_158da7fa75b327 29-32
+crates/kiosk-core/src/memo.rs
+  s_d4e40183daad6c::t_ceaa8af98807a4 13-19
+plugins/kiosk-watch/tests/watch.rs
+  s_d4e40183daad6c::t_b97ad23c17bb29 237
+  s_d4e40183daad6c::t_f0cc478cdee620 7,12,21-26,35-37,47,58-66,76-80
+  s_d4e40183daad6c::t_923359799aab84 171-229
+  s_d4e40183daad6c::t_ff80edc19a9857 536-573,575-658
+  s_d4e40183daad6c::t_af549300e1be9f 574
+  s_d4e40183daad6c::t_13f8fc69786133 103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "fa023ae4efae9b857013147aab6ff5160ae697ee",
+  "prompts": {},
+  "sessions": {
+    "s_d4e40183daad6c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5a5651de-86c4-4320-b1a9-751a8456ce34",
+        "model": "claude-opus-5"
+      },
+      "human_author": "sushant6095 <sushant.jain@vyapar.com>"
+    }
+  }
+}
