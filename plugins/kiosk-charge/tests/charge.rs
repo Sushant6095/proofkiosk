@@ -135,6 +135,40 @@ fn free_amount_within_cap_ok() {
 }
 
 #[test]
+fn shim_derives_the_reference_from_a_csprng_not_process_state() {
+    // The host builds a FRESH wasm store for every execute, so a `static`
+    // counter is always 0 on entry: the old reference was really just a
+    // millisecond timestamp. Two charges in the same millisecond collided onto
+    // one reference — and one payment clears both — while a predictable
+    // reference lets an attacker write junk at a charge that does not exist
+    // yet. The constitution's "no static/thread_local" rule is what forbids
+    // the counter; this guards against it coming back.
+    let shim = include_str!("../src/lib.rs");
+    assert!(
+        !shim.contains("AtomicU64"),
+        "the shim must not carry process-local state; a fresh store resets it"
+    );
+    assert!(
+        shim.contains("getrandom"),
+        "the reference must come from the host CSPRNG"
+    );
+}
+
+#[test]
+fn distinct_references_produce_distinct_charges() {
+    // The core is deliberately deterministic — the reference is an argument —
+    // so this pins the contract the shim's randomness rides on.
+    let args = || ChargeArgs {
+        item_id: Some("cold_drink".into()),
+        ..Default::default()
+    };
+    let a = execute_charge(&args(), &base_cfg(), [1u8; 32], 0).unwrap();
+    let b = execute_charge(&args(), &base_cfg(), [2u8; 32], 0).unwrap();
+    assert_ne!(a.reference, b.reference);
+    assert_ne!(a.url, b.url);
+}
+
+#[test]
 fn multibyte_note_does_not_panic() {
     // The note is free text from chat, so it can contain any UTF-8. Truncating
     // it by BYTE index lands mid-character and panics — a customer typing emoji
@@ -179,7 +213,11 @@ fn multibyte_note_truncates_on_a_character_boundary() {
         .or_else(|| out.url.split("memo=").nth(1))
         .unwrap_or("");
     let escapes = encoded.matches('%').count();
-    assert_eq!(escapes, 64 * 4, "expected exactly 64 whole 4-byte characters");
+    assert_eq!(
+        escapes,
+        64 * 4,
+        "expected exactly 64 whole 4-byte characters"
+    );
 }
 
 #[test]

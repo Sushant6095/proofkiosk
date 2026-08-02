@@ -17,6 +17,13 @@ wit-bindgen = "0.46"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
+# Host CSPRNG for the charge reference, via `wasi:random/random`. Only inside a
+# component: the pure core takes the reference as an argument and stays
+# deterministic, so host tests never link this. It adds no `wasi:http` — proven
+# by scripts/verify-no-network.sh, which still reports 0 for this plugin.
+[target.'cfg(target_family = "wasm")'.dependencies]
+getrandom = "0.3"
+
 [profile.release]
 opt-level = "s"
 lto = true

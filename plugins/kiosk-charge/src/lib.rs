@@ -139,7 +139,14 @@ mod component {
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_millis() as u64)
                 .unwrap_or(0);
-            match execute_charge(&charge_args, &cfg, reference_bytes(now_ms), now_ms) {
+            let reference = match reference_bytes() {
+                Ok(r) => r,
+                Err(e) => {
+                    emit(PluginAction::Fail, PluginOutcome::Failure, "csprng failed");
+                    return Ok(fail(e));
+                }
+            };
+            match execute_charge(&charge_args, &cfg, reference, now_ms) {
                 Ok(out) => {
                     emit(
                         PluginAction::Complete,
@@ -179,29 +186,29 @@ mod component {
         Ok(())
     }
 
-    /// Correlation reference: 32 bytes derived from time + a process counter
-    /// via FNV-1a chaining. The reference is a public lookup tag (it appears
-    /// in the payment URL), not a secret — uniqueness, not unpredictability,
-    /// is the requirement.
-    fn reference_bytes(now_ms: u64) -> [u8; 32] {
-        use std::sync::atomic::{AtomicU64, Ordering};
-        static COUNTER: AtomicU64 = AtomicU64::new(0);
-        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    /// Correlation reference: 32 bytes from the host CSPRNG
+    /// (`wasi:random/random` via `getrandom`).
+    ///
+    /// This used to be FNV over the clock plus a `static` counter, which was
+    /// wrong twice. The host builds a **fresh store for every `execute`**, so
+    /// the counter was always 0 on entry — the reference was really just the
+    /// millisecond timestamp, and two charges in the same millisecond collided
+    /// onto one reference. A shared reference means one payment satisfies both
+    /// charges. It was also fully predictable from the clock, which lets an
+    /// attacker write junk transactions at a charge that does not exist yet.
+    ///
+    /// A CSPRNG fixes both: collision probability is negligible over 32 bytes,
+    /// and nothing about the value can be anticipated. The reference is still a
+    /// *public* tag once issued — it appears in the payment URL — so this buys
+    /// unguessability before issuance, not secrecy after it.
+    ///
+    /// `getrandom` returning an error is fatal on purpose: a degraded,
+    /// guessable reference is worse than refusing to quote a price.
+    fn reference_bytes() -> Result<[u8; 32], String> {
         let mut out = [0u8; 32];
-        for (i, chunk) in out.chunks_mut(8).enumerate() {
-            let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-            for b in now_ms
-                .to_le_bytes()
-                .iter()
-                .chain(n.to_le_bytes().iter())
-                .chain([i as u8].iter())
-            {
-                h ^= *b as u64;
-                h = h.wrapping_mul(0x0000_0100_0000_01B3);
-            }
-            chunk.copy_from_slice(&h.to_le_bytes());
-        }
-        out
+        getrandom::fill(&mut out)
+            .map_err(|e| format!("host CSPRNG unavailable, refusing to issue a charge: {e}"))?;
+        Ok(out)
     }
 
     fn fail(message: String) -> ToolResult {
