@@ -94,7 +94,7 @@ impl AttestConfig {
 #[derive(serde::Deserialize, Debug, Default)]
 #[serde(deny_unknown_fields)]
 pub struct AttestArgs {
-    /// "reading" (default) or "event".
+    /// "reading" (default), "event", or "fulfillment".
     pub kind: Option<String>,
     pub metric: Option<String>,
     pub value: Option<f64>,
@@ -102,6 +102,11 @@ pub struct AttestArgs {
     pub event: Option<String>,
     pub payment_sig: Option<String>,
     pub item: Option<String>,
+    /// Fulfillment only: the Solana Pay reference of the charge that was just
+    /// delivered. It becomes a read-only account key of the marker, which is
+    /// what makes the marker discoverable by `kiosk_watch`'s scan of that
+    /// reference — and therefore what makes delivery single-use.
+    pub reference: Option<String>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -162,6 +167,11 @@ pub fn execute_attest<T: RpcTransport>(
     let ts = args.ts.unwrap_or(now);
     let kind = args.kind.as_deref().unwrap_or("reading");
 
+    // Set by the fulfillment kind: the charge reference, attached to the
+    // transaction so `kiosk_watch` can find this marker when it scans that
+    // reference. Nothing else adds account keys.
+    let mut reference_key: Option<[u8; 32]> = None;
+
     // 1. Validate the payload against the operator allowlist FIRST (fail closed).
     let (body, detail) = match kind {
         "reading" => {
@@ -201,6 +211,27 @@ pub fn execute_attest<T: RpcTransport>(
                 b["payment_sig"] = json!(sig);
             }
             (b, format!("event={event}"))
+        }
+        // The delivery receipt that makes actuation single-use. It records what
+        // was handed over, and — because the charge reference rides along as a
+        // read-only key — it is discoverable by the same scan kiosk-watch
+        // already performs. Still memo + advance-nonce only: this proves a
+        // delivery happened, it cannot move anything.
+        "fulfillment" => {
+            let reference = args.reference.as_deref().ok_or_else(|| {
+                AttestError::Args("reference is required for a fulfillment marker".into())
+            })?;
+            reference_key = Some(b58::decode_pubkey(reference).ok_or_else(|| {
+                AttestError::Args("reference is not a valid 32-byte base58 pubkey".into())
+            })?);
+            let mut b = json!({ "tag": memo::FULFILLMENT_TAG, "ref": reference });
+            if let Some(item) = &args.item {
+                b["item"] = json!(item);
+            }
+            if let Some(sig) = &args.payment_sig {
+                b["payment_sig"] = json!(sig);
+            }
+            (b, format!("ref={reference}"))
         }
         other => return Err(AttestError::Args(format!("unknown kind `{other}`"))),
     };
@@ -255,7 +286,21 @@ pub fn execute_attest<T: RpcTransport>(
     let memo_json = memo_val.to_string();
 
     // 5. Compile [advance-nonce, memo] into an UNSIGNED message on the durable nonce.
-    let advance = nonce::build_advance_nonce_ix(nonce_account, nonce_authority);
+    // The charge reference hangs off the advance-nonce instruction, not the
+    // memo: SPL Memo v2 requires every account passed to it to be a signer, and
+    // the kiosk cannot sign for a reference keypair it does not hold. The System
+    // program reads only accounts 0..=2 of AdvanceNonceAccount and ignores the
+    // rest, so an extra read-only key is inert on-chain while still landing the
+    // transaction in getSignaturesForAddress(reference) — the same mechanism
+    // Solana Pay uses to make a payment findable by its reference.
+    let mut advance = nonce::build_advance_nonce_ix(nonce_account, nonce_authority);
+    if let Some(key) = reference_key {
+        advance.accounts.push(memo::AccountMeta {
+            pubkey: key,
+            is_signer: false,
+            is_writable: false,
+        });
+    }
     let memo_ix = memo::build_memo_ix(&memo_json);
     let message = Message::compile(&[advance, memo_ix], nonce_authority, na.blockhash);
     let tx_base64 = message.to_base64();

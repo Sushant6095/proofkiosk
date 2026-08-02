@@ -95,6 +95,26 @@ fn reading(metric: &str, value: f64) -> AttestArgs {
     }
 }
 
+/// A charge reference pubkey — the same value kiosk-charge minted and
+/// kiosk-watch scans.
+const REFERENCE: &str = "Vote111111111111111111111111111111111111111";
+
+fn fulfillment(reference: &str) -> AttestArgs {
+    AttestArgs {
+        kind: Some("fulfillment".into()),
+        reference: Some(reference.into()),
+        payment_sig: Some("5xPaymentSig".into()),
+        item: Some("cold_drink".into()),
+        ..Default::default()
+    }
+}
+
+/// The memo text of the built transaction (instruction 1 is always the memo).
+fn memo_text(out: &AttestOutput) -> String {
+    let ix = &out.message.instructions[1];
+    String::from_utf8(ix.data.clone()).expect("memo is utf-8")
+}
+
 // ── injection drills (first) ─────────────────────────────────────────────────
 
 #[test]
@@ -148,6 +168,105 @@ fn tx_contains_only_memo_and_system_programs() {
         progs, expected,
         "attestation tx must contain ONLY Memo + System programs"
     );
+}
+
+// ── Fix B: the fulfillment marker ────────────────────────────────────────────
+
+#[test]
+fn fulfillment_marker_carries_the_tag_and_the_charge_reference() {
+    // kiosk-watch finds this marker by scanning getSignaturesForAddress on the
+    // reference and grepping the memo for the tag, so both must be present.
+    let out = execute_attest(&fulfillment(REFERENCE), &cfg(), fresh_chain(), NOW).unwrap();
+    let memo_json = memo_text(&out);
+    assert!(
+        memo_json.contains("PKFUL1"),
+        "memo must carry the fulfillment tag: {memo_json}"
+    );
+    assert!(
+        memo_json.contains(REFERENCE),
+        "memo must name the charge: {memo_json}"
+    );
+    assert!(
+        memo_json.contains("5xPaymentSig"),
+        "memo should record the payment it fulfilled: {memo_json}"
+    );
+}
+
+#[test]
+fn fulfillment_reference_is_an_account_key_so_the_marker_is_discoverable() {
+    // A memo alone is invisible to getSignaturesForAddress(reference): the
+    // reference has to be an account key of the transaction.
+    let out = execute_attest(&fulfillment(REFERENCE), &cfg(), fresh_chain(), NOW).unwrap();
+    let want = b58::decode_pubkey(REFERENCE).unwrap();
+    assert!(
+        out.message.account_keys.contains(&want),
+        "the charge reference must appear in accountKeys"
+    );
+}
+
+#[test]
+fn fulfillment_reference_is_read_only_and_not_a_signer() {
+    // The kiosk cannot produce a signature for the reference keypair, and the
+    // marker must not need one. A signer-flagged reference would make the
+    // transaction unsignable and single-use would silently never work.
+    let out = execute_attest(&fulfillment(REFERENCE), &cfg(), fresh_chain(), NOW).unwrap();
+    let want = b58::decode_pubkey(REFERENCE).unwrap();
+    let idx = out
+        .message
+        .account_keys
+        .iter()
+        .position(|k| *k == want)
+        .expect("reference is a key");
+    assert!(
+        idx >= out.message.header.num_required_signatures as usize,
+        "reference must not be in the signer prefix of accountKeys"
+    );
+}
+
+#[test]
+fn fulfillment_tx_contains_only_memo_and_system_programs() {
+    // The T1 invariant is unchanged by the new kind: a transfer is still not
+    // expressible, so even a fully compromised model cannot turn a delivery
+    // receipt into a spend.
+    let out = execute_attest(&fulfillment(REFERENCE), &cfg(), fresh_chain(), NOW).unwrap();
+    let mut progs = out.program_ids();
+    progs.sort();
+    let mut expected = vec![nonce::SYSTEM_PROGRAM_ID, memo::memo_program_id()];
+    expected.sort();
+    assert_eq!(
+        progs, expected,
+        "fulfillment tx must contain ONLY Memo + System programs"
+    );
+}
+
+#[test]
+fn fulfillment_memo_keeps_seq_so_the_attestation_chain_does_not_gap() {
+    // The marker lands on the nonce account too, so it becomes the newest memo
+    // there. chain::recover treats a newest memo without `seq` as a Gap, which
+    // would break the NEXT attestation.
+    let out = execute_attest(&fulfillment(REFERENCE), &cfg(), fresh_chain(), NOW).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&memo_text(&out)).expect("memo is JSON");
+    assert!(parsed.get("seq").is_some(), "memo must carry seq");
+    assert!(
+        parsed.get("prev").is_some(),
+        "memo must carry the prev link"
+    );
+}
+
+#[test]
+fn fulfillment_without_a_reference_is_rejected() {
+    let args = AttestArgs {
+        kind: Some("fulfillment".into()),
+        ..Default::default()
+    };
+    let r = execute_attest(&args, &cfg(), fresh_chain(), NOW);
+    assert!(matches!(r, Err(AttestError::Args(_))), "got {r:?}");
+}
+
+#[test]
+fn fulfillment_with_a_malformed_reference_is_rejected() {
+    let r = execute_attest(&fulfillment("not-a-pubkey"), &cfg(), fresh_chain(), NOW);
+    assert!(matches!(r, Err(AttestError::Args(_))), "got {r:?}");
 }
 
 #[test]

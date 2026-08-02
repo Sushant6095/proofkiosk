@@ -50,6 +50,7 @@ mod component {
         event: Option<String>,
         payment_sig: Option<String>,
         item: Option<String>,
+        reference: Option<String>,
         #[serde(rename = "__config")]
         config: HashMap<String, String>,
     }
@@ -72,7 +73,9 @@ mod component {
             "Record a tamper-evident, hash-chained attestation of a sensor reading or a \
              sale event on Solana. Pass kind=\"reading\" with metric and value (the metric \
              must be in the operator's allowlist and the value within its bounds), or \
-             kind=\"event\" with an event label (optionally item and payment_sig). Returns an \
+             kind=\"event\" with an event label (optionally item and payment_sig), or \
+             kind=\"fulfillment\" with the `reference` of a charge that was just delivered — \
+             that marker is what stops the same paid charge being delivered twice. Returns an \
              UNSIGNED durable-nonce transaction (base64) for the operator's signer to submit — \
              this tool never signs and cannot move funds. Device id, nonce account/authority, \
              and RPC endpoint are fixed by operator config and cannot be set here. Before \
@@ -85,13 +88,14 @@ mod component {
             serde_json::json!({
                 "type": "object",
                 "properties": {
-                    "kind": { "type": "string", "enum": ["reading", "event"], "description": "Attestation kind. Default `reading`." },
+                    "kind": { "type": "string", "enum": ["reading", "event", "fulfillment"], "description": "Attestation kind. Default `reading`." },
                     "metric": { "type": "string", "description": "Reading: metric name (must be in the operator allowlist), e.g. `temp_c`." },
                     "value": { "type": "number", "description": "Reading: numeric value, bounded by the operator's allowlist." },
                     "ts": { "type": "integer", "description": "Unix seconds for the record; defaults to now." },
                     "event": { "type": "string", "description": "Event: a short event label, e.g. `sale`." },
                     "payment_sig": { "type": "string", "description": "Event: the payment signature this event attests to." },
-                    "item": { "type": "string", "description": "Event: the item id involved." }
+                    "item": { "type": "string", "description": "Event/fulfillment: the item id involved." },
+                    "reference": { "type": "string", "description": "Fulfillment: the Solana Pay reference of the charge that was delivered." }
                 },
                 "additionalProperties": false
             })
@@ -140,6 +144,7 @@ mod component {
                 event: parsed.event,
                 payment_sig: parsed.payment_sig,
                 item: parsed.item,
+                reference: parsed.reference,
             };
 
             let now = std::time::SystemTime::now()
@@ -180,7 +185,7 @@ mod component {
 
     /// Reject any model-supplied key outside the declared schema.
     fn strict_check(raw: &str) -> Result<(), String> {
-        const ALLOWED: [&str; 8] = [
+        const ALLOWED: [&str; 9] = [
             "kind",
             "metric",
             "value",
@@ -188,6 +193,7 @@ mod component {
             "event",
             "payment_sig",
             "item",
+            "reference",
             "__config",
         ];
         let v: serde_json::Value =
