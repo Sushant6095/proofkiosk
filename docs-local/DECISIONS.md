@@ -6,6 +6,60 @@ not re-litigate a settled trade-off without the reasoning that settled it.
 
 ---
 
+## 2026-08-02 — Phase 1: quick-win real bugs (audit #44, #17, #21, #22, #23, #42, #43, #50, #51, #52)
+
+Ten fixes, no design choice large enough to grill. Recorded because three of them change
+behaviour an operator can observe, and two of those are trade-offs rather than pure wins.
+
+**Behaviour changes worth knowing about:**
+
+1. **`finalized` is now mandatory for a payment verdict (#22)** and is the default.
+   `confirmed` and `processed` are *refused*, not merely discouraged. This costs ~13s
+   between payment and delivery. The alternative — leaving it a knob — means the safe
+   setting is the one an operator has to know to choose, and the failure mode of choosing
+   wrong is dispensing against a transaction that can still disappear. A knob whose wrong
+   position loses money is not a knob, it is a trap. Weaker commitments stay legal for
+   heartbeat mode, which does not actuate; a test pins that so the restriction cannot creep
+   into liveness monitoring and make outage detection slower for no safety gain.
+
+2. **An absent pre-token-balance is now a decode error (#42).** The credited amount is
+   `post - pre`, and a missing `pre` entry was read as zero — making the delta the entire
+   post balance, so a merchant account already holding the price would verify a payment
+   that never happened. **Consequence:** a payment that creates the destination token
+   account in the same transaction has no `pre` entry and is now refused. That is a real
+   narrowing. It is the right side to err on — `devnet-setup.sh` creates the account and
+   any kiosk that has taken one payment already has one — but it is a behaviour change,
+   not just hardening, and someone will eventually hit it on a fresh merchant wallet.
+
+3. **`window_s` is now required (#21).** It was optional, and its absence skipped the age
+   check entirely — so the easiest way to defeat the acceptance window was to not ask for
+   one. Fail-open by omission is the worst kind: nothing in the config looks wrong.
+
+**On #43 (mint decimals).** The scale now comes from the transaction's reported
+`uiTokenAmount.decimals` rather than a hardcoded 6. Worth noting *why* the balance entry
+is the right source and not a separate `getMint` call: it costs no extra RPC, and it
+describes the mint as of the transaction being verified rather than as of now. A ceiling
+of 18 decimals rejects an implausible response outright rather than scaling money by it.
+
+**On #23 (reference randomness).** The `static` counter was not merely weak, it was
+inert: a fresh store per `execute` meant it was always 0, so the reference was a pure
+function of the millisecond clock. Two charges in the same millisecond therefore shared a
+reference, and one payment satisfied both. This is the clearest example so far of the
+stateless constitution being load-bearing rather than stylistic — the rule exists because
+process state silently *does nothing*, which is far worse than failing.
+
+**Deliberately not done in this phase:** `scripts/devnet-setup.sh` now emits the correct
+*keys* (`price_list`, `device_authority`, `finality = "finalized"`), but still uses the
+`[plugins.<name>.config]` section path. Audit #10 says the pinned host actually expects
+`plugins.entries.<name>.config`; that correction belongs to Phase 2, where it can be
+verified against the running host rather than guessed at.
+
+**Reusable takeaway:** an optional safety check is not a safety check. Every fail-open in
+this batch (#21 twice, #22, #42) had the same shape — a value that was *absent* rather
+than *wrong*, taking a path that skipped verification instead of refusing it.
+
+---
+
 ## 2026-08-02 — Phase 0: status banner separating shipped from roadmap (audit #8)
 
 **Locked: a status table at the very top of the README, above the architecture, plus
