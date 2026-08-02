@@ -1,0 +1,44 @@
+config/example.toml
+  s_d4e40183daad6c::t_e39a07339305ba 61-79
+docs/threat-model.md
+  s_d4e40183daad6c::t_3044f572fe847a 150-157
+  s_d4e40183daad6c::t_37cc12a76c0b08 176-196
+  s_d4e40183daad6c::t_1e46de6df0f928 113-119
+README.md
+  s_d4e40183daad6c::t_5d913726d28d91 75,184,331-332
+  s_d4e40183daad6c::t_3709efb0b11e3e 330
+  s_d4e40183daad6c::t_3ba21e6189153d 71
+  s_d4e40183daad6c::t_e26bec596d9f4e 43,56-65,144-149,212-213,216-218,244,263-266,346-347
+plugins/kiosk-attest/tests/attest.rs
+  s_d4e40183daad6c::t_3ba21e6189153d 366-372
+  s_d4e40183daad6c::t_8f5de796e2f92a 365
+plugins/kiosk-attest/README.md
+  s_d4e40183daad6c::t_1268c4b792b1d7 92,95-120
+docs-local/DECISIONS.md
+  s_d4e40183daad6c::t_c29511a441fefe 9-88
+sops/payment-loop/SOP.md
+  s_d4e40183daad6c::t_568a8bb3f7998e 4,12-14,16-17,21-25,36-43,50-87,91-97,129-130,133,138-139,144,148-154
+plugins/kiosk-watch/README.md
+  s_d4e40183daad6c::t_db28f4f22767d6 4-6,10,32-34,68,72,79,99-101,120-139
+  s_d4e40183daad6c::t_3709efb0b11e3e 25
+sops/payment-loop/SOP.toml
+  s_d4e40183daad6c::t_300172e1286b04 4-12
+scripts/check-config.sh
+  s_d4e40183daad6c::t_12cb056b1d363b 1-87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "2f906b245a10b9a67d3df407e9761331e75804b1",
+  "prompts": {},
+  "sessions": {
+    "s_d4e40183daad6c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5a5651de-86c4-4320-b1a9-751a8456ce34",
+        "model": "claude-opus-5"
+      },
+      "human_author": "sushant6095 <sushant.jain@vyapar.com>"
+    }
+  }
+}
