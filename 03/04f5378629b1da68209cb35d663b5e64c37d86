@@ -1,0 +1,30 @@
+plugins/kiosk-charge/src/lib.rs
+  s_d4e40183daad6c::t_d413e7c038ef39 142-149
+  s_d4e40183daad6c::t_7748e2e1acb616 189-207,209-211
+plugins/kiosk-charge/Cargo.toml
+  s_d4e40183daad6c::t_78267a8dffacac 20-26
+plugins/kiosk-charge/tests/charge.rs
+  s_d4e40183daad6c::t_07285981697632 216-220
+  s_d4e40183daad6c::t_4d84d0596b3d98 137-160,167-170
+  s_d4e40183daad6c::t_3400a5a43c6926 161-166
+plugins/kiosk-charge/Cargo.lock
+  s_d4e40183daad6c::t_615257ec6bb930 17-22,123-134,184,188,204-209,262-267,357-365,412-417
+plugins/kiosk-charge/README.md
+  s_d4e40183daad6c::t_a0f0c5abe6289c 23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "0304f5378629b1da68209cb35d663b5e64c37d86",
+  "prompts": {},
+  "sessions": {
+    "s_d4e40183daad6c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5a5651de-86c4-4320-b1a9-751a8456ce34",
+        "model": "claude-opus-5"
+      },
+      "human_author": "sushant6095 <sushant.jain@vyapar.com>"
+    }
+  }
+}
