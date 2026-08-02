@@ -92,10 +92,23 @@ impl WatchConfig {
                     .split_once(':')
                     .ok_or_else(|| WatchError::Config(format!("bad price entry `{entry}`")))?;
                 let (item, amount) = (item.trim(), amount.trim());
-                if decimal_to_base_units(amount, USDC_DECIMALS).is_none() {
-                    return Err(WatchError::Config(format!(
-                        "price `{amount}` for item `{item}` is not a valid USDC decimal"
-                    )));
+                match decimal_to_base_units(amount, USDC_DECIMALS) {
+                    None => {
+                        return Err(WatchError::Config(format!(
+                            "price `{amount}` for item `{item}` is not a valid USDC decimal"
+                        )))
+                    }
+                    // A zero price makes the amount check `delta == 0` — true
+                    // for a transaction that moved nothing — so a free item
+                    // would let any transaction referencing the charge open the
+                    // relay. kiosk-charge already refuses a non-positive
+                    // amount; refusing it here keeps the two ends agreeing.
+                    Some(0) => {
+                        return Err(WatchError::Config(format!(
+                            "price for item `{item}` must be greater than zero"
+                        )))
+                    }
+                    Some(_) => {}
                 }
                 price_list.insert(item.to_string(), amount.to_string());
             }

@@ -135,6 +135,54 @@ fn free_amount_within_cap_ok() {
 }
 
 #[test]
+fn multibyte_note_does_not_panic() {
+    // The note is free text from chat, so it can contain any UTF-8. Truncating
+    // it by BYTE index lands mid-character and panics — a customer typing emoji
+    // would take the plugin down, which on a machine that actuates is a denial
+    // of service, not a cosmetic bug. 30 × 3-byte chars = 90 bytes, so byte 64
+    // falls inside a character.
+    let out = execute_charge(
+        &ChargeArgs {
+            amount_usdc: Some("2.25".into()),
+            note: Some("☕".repeat(30)),
+            ..Default::default()
+        },
+        &base_cfg(),
+        REF32,
+        0,
+    )
+    .expect("a multibyte note must not panic or fail");
+    assert!(out.url.contains("amount=2.25"));
+}
+
+#[test]
+fn multibyte_note_truncates_on_a_character_boundary() {
+    // Truncation must count characters, not bytes: 100 four-byte emoji must
+    // survive as 64 whole characters, never a split code point.
+    let out = execute_charge(
+        &ChargeArgs {
+            amount_usdc: Some("2.25".into()),
+            note: Some("🥤".repeat(100)),
+            ..Default::default()
+        },
+        &base_cfg(),
+        REF32,
+        0,
+    )
+    .unwrap();
+    // Percent-encoded in the URL, so assert on the decoded count via the memo
+    // parameter length: 64 chars × 4 bytes × 3 chars per %XX escape.
+    let encoded = out
+        .url
+        .split("message=")
+        .nth(1)
+        .or_else(|| out.url.split("memo=").nth(1))
+        .unwrap_or("");
+    let escapes = encoded.matches('%').count();
+    assert_eq!(escapes, 64 * 4, "expected exactly 64 whole 4-byte characters");
+}
+
+#[test]
 fn output_stays_within_token_budget() {
     let out = execute_charge(
         &ChargeArgs {

@@ -630,6 +630,32 @@ fn junk_tx_after_payment_still_verifies() {
 }
 
 #[test]
+fn zero_priced_item_is_rejected_at_config_load() {
+    // A zero price makes `delta == expected_units` true for a transaction that
+    // moved no money at all, so a free item would open the relay on any tx that
+    // referenced the charge. kiosk-charge already refuses a non-positive
+    // amount; the verifier must refuse it too, or the two disagree about what
+    // is sellable and the weaker one wins.
+    let section = [
+        ("rpc_url", RPC),
+        ("merchant_address", MERCHANT),
+        ("price_list", "freebie:0"),
+        ("device_authority", AUTHORITY),
+    ]
+    .iter()
+    .map(|(k, v)| (k.to_string(), v.to_string()))
+    .collect();
+    let err = WatchConfig::from_section(&section).unwrap_err();
+    match err {
+        WatchError::Config(m) => assert!(
+            m.contains("freebie") && (m.contains("positive") || m.contains("greater")),
+            "error should name the item and say the price must be positive: {m}"
+        ),
+        other => panic!("expected Config error, got {other:?}"),
+    }
+}
+
+#[test]
 fn missing_device_authority_fails_closed() {
     // Without it no marker can be authenticated, so single-use cannot be
     // enforced. Refuse to verify rather than actuate with the check disabled.
