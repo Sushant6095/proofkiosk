@@ -1,0 +1,23 @@
+plugins/kiosk-attest/README.md
+  s_7021c90b94d92f::t_458f330a20ac29 251,262
+plugins/kiosk-charge/README.md
+  s_7021c90b94d92f::t_650964f3717585 216
+plugins/kiosk-watch/README.md
+  s_7021c90b94d92f::t_2558e789ba37e4 252,264
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "02110631ad791442b9a18b38994e5affd96888d5",
+  "prompts": {},
+  "sessions": {
+    "s_7021c90b94d92f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fddfcab9-3c8b-40b7-939f-5b27c022cdb4",
+        "model": "claude-opus-5"
+      },
+      "human_author": "sushant6095 <sushant.jain@vyapar.com>"
+    }
+  }
+}
