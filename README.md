@@ -3,14 +3,38 @@
 [![ci](https://github.com/Sushant6095/proofkiosk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Sushant6095/proofkiosk/actions/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 
-A [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw) agent that **sells a physical
-item for USDC, delivers it only after the payment is verified on-chain, and writes
-tamper-evident proof of what it did** — while the agent never holds a spendable key.
+A [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw) agent for selling a physical item
+for USDC, dispensing it **only** after the payment is verified on-chain, and writing
+tamper-evident proof of what it did — while the agent never holds a spendable key.
 
 **For:** anyone putting an LLM agent in front of money or hardware. If a stranger can
 talk to your agent and your agent can move funds or actuate something, this repo is a
 worked example of how to make that safe by construction rather than by prompt. Three
 small WASM tool plugins over one shared pure crate; each is useful on its own.
+
+**The payment rail is built and tested. The actuation and attestation legs are not yet
+demonstrated end to end.** The table below is the authoritative split — read it before
+anything else in this README, which describes the full design including parts that do not
+run yet.
+
+## Status: what runs today vs roadmap
+
+| Capability | Status | Evidence / what's missing |
+|---|---|---|
+| Charge → Solana Pay `solana:` URL + reference | ✅ **Runs today** | `kiosk-charge`, 12 tests. Zero network: the component imports **0** `wasi:http` interfaces, checked against the compiled artifact by `scripts/verify-no-network.sh`. QR is rendered host-side by [`skills/kiosk-qr`](skills/kiosk-qr). |
+| On-chain payment verification | ✅ **Runs today** | `kiosk-watch`, 36 tests. Verifies recipient + mint + amount + reference against the chain. |
+| — priced from operator config, not the model | ✅ **Runs today** | The gating amount is looked up from `price_list` by `item_id`; a model-supplied amount cannot reach the gate. Free-amount charges are invoicing-only and structurally never actuation-eligible. |
+| — replay-proof | ✅ **Runs today** | A second fulfillment of the same reference returns `AlreadyFulfilled`, driven by an **authenticated** on-chain marker, not local state. |
+| — bounded against a reference-poisoning DoS | ✅ **Runs today** | The signature scan and marker authentication are both hard-capped (`SIG_LIMIT`, `MARKER_AUTH_LIMIT`), so a public reference cannot be flooded to exhaust the scan. |
+| Host test suite, no network in any test | ✅ **Runs today** | **127 tests** across four crates; all RPC is mocked through a one-method transport seam. |
+| `finalized`-only gate for actuation | 🟡 **Roadmap** | Commitment is operator-configurable and currently **defaults to `confirmed`**; `processed` is still accepted. Requiring `finalized` before an actuating verdict is a hardening item, not shipped. |
+| SOP-driven relay actuation | 🚧 **Roadmap** | The SOPs validate and their routing is verified against the runtime, but the guard predicate does not resolve: ZeroClaw's routing payload carries a step's output *string*, not a structured field. Fails closed (relay stays shut), so the loop does not dispense. See [`sops/payment-loop/SOP.md`](sops/payment-loop/SOP.md). |
+| Attestation landing + finalizing on chain | 🚧 **Roadmap** | `kiosk-attest` builds a correct **unsigned** durable-nonce memo transaction (24 tests). Nothing in this repo signs or submits it, and no attestation has been observed landing on chain. |
+| Physical hardware (Pi + relay + sensor) | 🚧 **Roadmap** | [`hardware/wiring.md`](hardware/wiring.md) is a build guide, not a record of a build. No GPIO has been driven by this code on camera. |
+
+Nothing below this table has been removed — the architecture, the three-rung ladder, and
+the SOPs describe the full intended system. Where a section describes a roadmap leg, it
+says so inline.
 
 Three rungs, and **rung 1 needs no hardware at all** — the payment rail runs on a laptop
 against localnet in an evening.
@@ -28,20 +52,21 @@ flowchart LR
     A --> WA["kiosk-watch · T0<br/>read-only RPC"]
     WA -->|"verify recipient + mint<br/>+ amount + reference<br/>+ finality"| SOL[("Solana")]
     M --- SOL
-    WA -->|"success == true<br/>ONLY"| R["GPIO relay<br/>→ item drops"]
+    WA -. "success == true ONLY<br/><b>(roadmap — not wired)</b>" .-> R["GPIO relay<br/>→ item drops"]
     A --> AT["kiosk-attest · T1<br/>unsigned memo tx"]
     AT -->|"hash-chained<br/>durable-nonce memo"| S["External operator signer"]
-    S --> SOL
+    S -. "<b>(roadmap — never landed)</b>" .-> SOL
 ```
 
-Money never touches the agent: it flows customer wallet → merchant wallet directly. The
-agent prints the invoice, reads the chain, and pulses a pin.
+Solid arrows run today; **dashed arrows are roadmap** (see the status table). Money never
+touches the agent: it flows customer wallet → merchant wallet directly. The agent prints
+the invoice and reads the chain; pulsing a pin off that verdict is the leg still to build.
 
 | Component | Tier | Question it answers | Network | Size |
 |---|---|---|---|---|
 | [`plugins/kiosk-charge`](plugins/kiosk-charge) | T1 | "What should the customer pay?" → Solana Pay `solana:` URL | **none** | 210 KB |
-| [`plugins/kiosk-watch`](plugins/kiosk-watch) | T0 | "Did the money actually arrive, and was this charge already delivered?" → PAID / PENDING / EXPIRED / MISMATCH / ALREADY FULFILLED | read-only RPC | 348 KB |
-| [`plugins/kiosk-attest`](plugins/kiosk-attest) | T1 | "Prove what happened." → hash-chained unsigned memo tx | read-only RPC | 384 KB |
+| [`plugins/kiosk-watch`](plugins/kiosk-watch) | T0 | "Did the money actually arrive, and was this charge already delivered?" → PAID / PENDING / EXPIRED / MISMATCH / ALREADY FULFILLED | read-only RPC | 356 KB |
+| [`plugins/kiosk-attest`](plugins/kiosk-attest) | T1 | "Prove what happened." → hash-chained unsigned memo tx | read-only RPC | 389 KB |
 | [`crates/kiosk-core`](crates/kiosk-core) | — | shared pure substrate: base58/base64, shortvec, Solana Pay, memo + nonce builders, JSON-RPC seam, output shaping | — | rlib |
 
 ---
@@ -52,19 +77,23 @@ agent prints the invoice, reads the chain, and pulses a pin.
 material. Jailbreaking the chatbot yields no till to raid, because there is no till — the
 recipient is fixed by operator config and unreachable from the prompt.
 
-**2. The relay fires on a verified on-chain payment, not on what the agent believes.**
-`kiosk-watch` returns `success == true` **iff** the **operator-configured price** of the
-requested item reached the merchant at the configured finality — there is no amount
-argument, so the number gating the hardware is unreachable from the prompt. Pending,
-mismatch, expiry, and RPC failure all fail closed.
+**2. The actuation verdict comes from a verified on-chain payment, not from what the agent
+believes.** `kiosk-watch` returns `success == true` **iff** the **operator-configured
+price** of the requested item reached the merchant at the configured finality — there is
+no amount argument, so the number gating the hardware is unreachable from the prompt.
+Pending, mismatch, expiry, and RPC failure all fail closed.
+*Scope:* the verdict is built and tested; **the relay is not yet wired to it** — see the
+status table. Commitment currently defaults to `confirmed`, not `finalized`.
 
-**3. A charge is delivered once.** After actuation `kiosk-attest` writes a `PKFUL1`
-fulfillment marker; `kiosk-watch` returns `ALREADY FULFILLED` for that charge from then
-on. The plugin is stateless by construction, so single-use is read back off the chain
-rather than remembered — and a marker counts only if the operator's device authority
-signed it, so a stranger cannot forge one to block a delivery.
+**3. A charge is fulfilled once.** `kiosk-attest` builds a `PKFUL1` fulfillment marker and
+`kiosk-watch` returns `ALREADY FULFILLED` for that charge from then on. The plugin is
+stateless by construction, so single-use is read back off the chain rather than
+remembered — and a marker counts only if the operator's device authority signed it, so a
+stranger cannot forge one to block a delivery.
+*Scope:* the marker is built and the authenticated read-back is tested against mocked RPC;
+**no marker has been signed and landed on chain yet.**
 
-Neither is asserted on faith:
+None of these is asserted on faith:
 
 - `scripts/verify-no-network.sh` builds the `kiosk-charge` component and greps its
   imported interfaces for `wasi:http`. The count must be **0**. It also prints
@@ -307,7 +336,7 @@ The parts that cost real time, kept here because they are the reusable lessons:
 - **Hyphens become underscores.** `kiosk-charge` builds to `kiosk_charge.wasm`, and
   `wasm_path` must name the artifact exactly. `scripts/stage-plugin.sh` reads the manifest
   rather than guessing.
-- **HTTP/TLS is most of the binary, not your code.** 210 KB offline versus 348 KB with a
+- **HTTP/TLS is most of the binary, not your code.** 210 KB offline versus 356 KB with a
   client bundled. Dropping `wasi:http` is worth ~140 KB and is the cheapest size win
   available.
 - **The SOP file format is not what the docs' TOML examples suggest.** Steps parse from
@@ -327,8 +356,8 @@ All green, **no network in any test**.
 |---|---|---|---|---|
 | kiosk-core | 55 (incl. property + fuzz) | clean | clean | — (rlib) |
 | kiosk-charge | 12 | clean | clean | 210 KB ✔ <250 KB |
-| kiosk-watch | 36 | clean | clean | 348 KB (bundles HTTP/TLS) |
-| kiosk-attest | 24 | clean | clean | 384 KB (bundles HTTP/TLS) |
+| kiosk-watch | 36 | clean | clean | 356 KB (bundles HTTP/TLS) |
+| kiosk-attest | 24 | clean | clean | 389 KB (bundles HTTP/TLS) |
 | **total** | **127** | **clean** | **clean** | `scripts/wasm-size.sh` |
 
 ## Repo map
