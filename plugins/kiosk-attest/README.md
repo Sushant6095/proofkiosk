@@ -89,10 +89,35 @@ sensor's datasheet range.
 
 | Arg | Kind | Meaning |
 |---|---|---|
-| `kind` | both | `"reading"` (default) or `"event"`. |
+| `kind` | all | `"reading"` (default), `"event"`, or `"fulfillment"`. |
 | `metric`, `value` | reading | Allowlisted metric name; finite numeric value inside its bounds. |
 | `event`, `item`, `payment_sig` | event | Event label, optional item id and payment signature. |
-| `ts` | both | Unix seconds. Defaults to now. |
+| `reference` | fulfillment | The Solana Pay reference of the charge that was just delivered. Required. |
+| `ts` | all | Unix seconds. Defaults to now. |
+
+### The fulfillment kind, and why it exists
+
+`kind="fulfillment"` writes a **delivery receipt**: a `PKFUL1`-tagged memo naming a
+charge. [`kiosk-watch`](../kiosk-watch) scans for it and refuses to re-authorize a charge
+that has one, which is what makes delivery single-use — the verifier is stateless, so
+"already delivered" has to be a fact about the chain rather than something remembered.
+
+Two implementation details that are load-bearing:
+
+- **The reference rides as a read-only, non-signer account key**, which is what puts the
+  marker into `getSignaturesForAddress(reference)` where the watcher looks. It hangs off
+  the `AdvanceNonceAccount` instruction, not the memo — SPL Memo v2 rejects any account
+  passed to it that is not a signer, and the kiosk cannot sign for a reference keypair it
+  does not hold. The System program reads only accounts 0..=2, so the extra key is inert
+  on-chain. This is the same mechanism Solana Pay uses to make a payment findable.
+- **Your `nonce_authority` is what authenticates it.** It is the fee payer and only
+  required signer of the marker, so it must equal `kiosk-watch`'s `device_authority`. Set
+  them differently and no marker ever authenticates — single-use silently stops working.
+  `scripts/check-config.sh` checks this.
+
+Custody is unchanged: still an unsigned Memo + System transaction, still incapable of
+expressing a transfer, re-asserted for this kind by
+`fulfillment_tx_contains_only_memo_and_system_programs`.
 
 ## Worked example
 

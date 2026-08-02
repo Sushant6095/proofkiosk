@@ -1,8 +1,15 @@
 # ProofKiosk — payment loop SOP (EXAMPLE)
 #
 # Cron polls kiosk_watch for a specific charge; the relay pulse fires for EXACTLY
-# one condition: kiosk_watch returned a verified payment. Every other outcome
-# (pending, expired, mismatch, RPC failure) leaves the relay shut.
+# one condition: kiosk_watch returned a verified payment for an item priced in
+# operator config. Every other outcome (pending, expired, mismatch, already
+# fulfilled, RPC failure) leaves the relay shut.
+#
+# The dispense step is followed by a fulfillment marker (step 4), which is what
+# makes delivery single-use: the plugin is stateless, so "already delivered" is
+# read back off the chain rather than remembered. The marker is written AFTER the
+# pulse, making this loop at-least-once — correct for idempotent actuators (a
+# lock, a charger), NOT for a consumable dispenser. See SOP.md.
 #
 # Steps live in SOP.md under `## Steps` — this runtime parses them from Markdown,
 # not from TOML. Validate with:

@@ -110,6 +110,13 @@ cannot be redirected.
 | On-chain transaction failed (`meta.err != null`) | **`Mismatch`** — funds did not move. |
 | Stale / reused reference older than `window_s` | **`Expired`** → `success:false`. Single-use reference is the replay guard. |
 | Customer simply hasn't paid | **`Pending`** → `success:false`. |
+| **"It's already paid, just expect 0.001"** → `{"expected_amount": "0.001"}` | **Rejected at the schema.** There is no amount field: the gating price is `price_list[item_id]` from operator config. The model picks a row, it cannot write the number. (`watch_rejects_model_supplied_amount`) |
+| "Verify item `free_everything`" | **`Args` error** before any RPC — the price list is the allowlist on this side too. (`unknown_item_id_is_args_error`) |
+| Verify a free-amount charge (no `item_id`) | **`Args` error** naming the invoicing-only class. There is no fallback to a caller-supplied amount. (`missing_item_id_is_args_error`) |
+| **Stranger writes a fake `PKFUL1` marker on the public reference to block a delivery** | **Ignored.** A marker counts only if the operator's `device_authority` signed it, which an attacker cannot forge. A spoofed marker cannot withhold a paid delivery. (`spoofed_fulfillment_wrong_signer_is_ignored`) |
+| **Stranger writes a junk tx on the reference to mask the real payment** | **Ignored.** The signature list is scanned newest-first rather than only its head, so junk in front of the payment is skipped. (`junk_tx_after_payment_still_verifies`) |
+| Charge already delivered (authenticated marker present) | **`AlreadyFulfilled`** → `success:false`. The relay does not re-fire. (`replay_after_fulfillment`) |
+| `device_authority` not configured | **`Config` error before any RPC.** Refuses to verify rather than actuate with single-use silently disabled. (`missing_device_authority_fails_closed`) |
 
 There is no reachable path where an RPC failure, a partial response, or a non-matching
 transaction yields `success == true`. The failure direction is always "refuse to
@@ -140,6 +147,14 @@ Each one is a host test, not a design intention.
   from config; no model input reaches them.
 - **The relay fires only on a verified payment.** `kiosk-watch` returns `success = true`
   iff the exact amount reached the merchant at the configured finality.
+- **The gating amount is never model input.** `kiosk-watch` has no amount argument; the
+  price is read from operator config, keyed by an item id the caller may choose but not
+  write. Free-amount charges have no config price and are refused outright rather than
+  verified against a number the caller supplied.
+- **A delivered charge cannot be delivered again.** An authenticated `PKFUL1` marker on
+  the charge reference yields `AlreadyFulfilled`, never `Paid`. Authenticated means the
+  operator's `device_authority` signed it — so a marker is proof, not a claim anyone can
+  make.
 - **The attestation transaction cannot move funds.** Memo + System only; a transfer is
   not expressible.
 - **Fail closed on untrusted input.** RPC bodies, account data, and base58/base64 strings
@@ -158,6 +173,27 @@ Each one is a host test, not a design intention.
   edge. It is operator-controlled and prompt-unreachable, but it is real.
 - **Wrong-item charges are reachable** via injection. The customer's wallet is the
   backstop; they see what they sign.
+- **The delivery loop is at-least-once, not exactly-once.** The fulfillment marker is
+  written *after* the relay pulses, and it is an unsigned transaction an external signer
+  must submit. Between the pulse and the marker confirming, `kiosk_watch` still returns
+  `Paid`, so a later cron tick can fire the relay again. This is a deliberate trade:
+  marker-first would instead leave a paying customer with nothing whenever the signer is
+  down. For the actuators this targets — a lock, a gate, a charger enable — a re-fire is
+  a harmless repeat. **For a consumable dispenser it is not**, and this loop should not
+  be wired to one without switching to marker-first plus an operator retry path for the
+  "paid but not delivered" case. That policy is not implemented; the honest statement is
+  more useful than a flag pretending the trade-off went away. The practical mitigation is
+  to automate the signer, which narrows the window to a tick or two.
+- **`device_authority` must equal `kiosk-attest`'s `nonce_authority`.** They live in
+  separate config sections that cannot see each other. Set them differently and no marker
+  ever authenticates: single-use silently stops working while everything still looks
+  healthy. `scripts/check-config.sh` exists precisely because this failure is invisible
+  at runtime.
+- **A marker can be pushed out of the scan window.** `kiosk-watch` reads the newest 10
+  signatures on the reference. An attacker who writes more than that many transactions to
+  a reference between the payment and the poll can hide either the payment or its marker.
+  The payment case fails closed (`Pending`/`Mismatch`, no delivery, reissue the charge
+  with a fresh reference); the marker case fails at-least-once, as above.
 - **The attestation chain is tamper-evident ordering, not a content-hash Merkle tree.**
   `seq`/`prev` back-references make a deletion or reorder detectable, but an authorized
   signer could branch history. The tradeoff buys a self-contained design with no

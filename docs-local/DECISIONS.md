@@ -6,6 +6,86 @@ not re-litigate a settled trade-off without the reasoning that settled it.
 
 ---
 
+## 2026-08-02 — Fix B: single-use delivery via an authenticated on-chain marker
+
+**Locked: option (a) — an on-chain fulfillment memo authenticated by the device
+authority.** After actuation, `kiosk-attest` builds a `PKFUL1` marker naming the charge;
+`kiosk-watch` scans the reference for one and returns `AlreadyFulfilled` (never `Paid`)
+when it finds one it can authenticate.
+
+**Why this wins.** A verified payment stays verified forever, so a stateless verifier
+polled on a cron will re-authorize the same charge on every tick. The component *is*
+stateless by construction — the host builds a fresh WASI store and fuel budget per
+`execute`, so a counter silently resets — which means "already delivered" cannot be
+remembered. It has to be a fact about the world, and the chain is the one piece of shared
+state both the kiosk and an auditor can read.
+
+**Authentication is the whole design, not a hardening pass.** The reference is public —
+it is printed in the QR the customer scans — so anyone can write a memo naming it.
+A marker believed on sight would hand every passer-by a veto over deliveries: write
+`PKFUL1` at a charge and it can never be fulfilled. So a marker counts only if it
+succeeded on-chain, names this charge, **and** was signed by the operator's
+`device_authority`. That last condition is unforgeable, and it fails *open* on purpose —
+an unauthenticated marker is treated as not-a-marker, because a fake must never withhold
+a delivery someone paid for.
+
+**Rejected — (b) a marker account / PDA.** Strictly better semantics (a real
+"exists / doesn't exist" bit rather than a memo scan) and it would sidestep the
+scan-window limit below. It needs an on-chain program: something to write, deploy,
+upgrade, audit, and trust. That is a large new trust surface for a repo whose central
+claim is how little it asks you to trust, and it would put a deployed program between
+the kiosk and its own safety property. Worth revisiting if ProofKiosk ever ships its own
+program for other reasons.
+
+**Rejected — (c) SOP one-shot only.** The SOP cannot enforce it: the cron trigger starts
+a *new* run each tick, and `max_concurrent`/`admission_policy` bound concurrency, not
+identity. There is nothing keyed to the reference for a one-shot to be one-shot *about*.
+It would read as a guarantee while providing none — the worst kind of safety mechanism.
+
+**Ordering: relay → marker (at-least-once), decided against marker-first.** Neither
+ordering is atomic, because the marker is an unsigned transaction an external signer
+submits out of band. The choice is therefore which failure to prefer:
+
+| Ordering | Failure mode | Who is hurt |
+|---|---|---|
+| relay → marker (**chosen**) | marker write fails → a later tick re-fires | nobody, for an idempotent actuator |
+| marker → relay | relay fails after the marker lands → charge reads fulfilled, nothing delivered | **the customer who paid** |
+
+For a lock, a gate, or a charger enable, a re-fire is a harmless re-unlock. Robbing a
+paying customer is not harmless. **This inverts for a consumable dispenser**, where a
+second drink is a real loss — those need at-most-once ordering plus an operator retry
+path, which is a config policy this repo does not ship. Documented as a deployment
+constraint in `sops/payment-loop/SOP.md` and `docs/threat-model.md` rather than hidden
+behind a flag.
+
+**Adopted along the way.** Two findings surfaced while grilling this design:
+
+1. **`device_authority` must equal `kiosk-attest`'s `nonce_authority`** — that is the fee
+   payer and only required signer of every marker. Two separate config sections that
+   cannot read each other, and a mismatch disables single-use *silently*. Hence
+   `scripts/check-config.sh`, which also catches a drifted `price_list`.
+2. **A pre-existing DoS.** `verify_payment` inspected only the newest signature on the
+   reference, so one junk transaction written after a real payment masked it and the
+   charge read as `Mismatch` forever — anyone could block every sale for the price of a
+   memo. Fixed by scanning the list newest-first; the first transaction that fully
+   verifies wins.
+
+**Residual, stated rather than solved:** the scan reads the newest 10 signatures, so an
+attacker who writes more than that to a reference can push the payment or its marker out
+of view. The payment case fails closed; the marker case degrades to at-least-once.
+
+**Implementation note.** The reference hangs off the `AdvanceNonceAccount` instruction,
+not the memo: SPL Memo v2 rejects any account passed to it that is not a signer, and the
+kiosk cannot sign for a reference keypair it does not hold. The System program reads only
+accounts 0..=2 of that instruction, so an extra read-only key is inert on-chain while
+still making the transaction discoverable — the same mechanism Solana Pay uses.
+
+**Reusable takeaway:** when a component cannot hold state, put the state where an
+adversary can also write — then make the *signature*, not the presence, of the record be
+what counts. Verify-don't-trust turns shared public storage into private state.
+
+---
+
 ## 2026-08-02 — Fix A: the gating amount is operator config, never the model
 
 **Locked: option (a) — mirror `kiosk-charge` on the watch side.** `WatchConfig` parses

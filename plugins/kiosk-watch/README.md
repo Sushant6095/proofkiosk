@@ -1,12 +1,13 @@
 # kiosk-watch
 
 Answers one question with a boolean you can wire to a relay: **did the expected USDC
-payment actually land on-chain?** Verifies recipient, mint, amount, reference, and
-finality in one `getSignaturesForAddress` plus at most one `getTransaction`.
+payment actually land on-chain, and has this charge already been delivered?** Verifies
+recipient, mint, amount, reference, and finality against the chain — and refuses to
+re-authorize a charge that already carries a fulfillment marker.
 
 **For:** anyone who needs "is invoice X paid?" answered by the chain rather than by a
 language model. Useful standalone from a laptop — point it at any Solana Pay reference
-and it tells you PAID / PENDING / EXPIRED / MISMATCH. Component 2 of 3 in
+and it tells you PAID / PENDING / EXPIRED / MISMATCH / ALREADY FULFILLED. Component 2 of 3 in
 [ProofKiosk](../../README.md), where it is the gate the actuation SOP checks before
 firing a GPIO relay. Also has a **heartbeat** mode for device liveness.
 
@@ -21,15 +22,16 @@ webhook.
 | Property | Status |
 |---|---|
 | Holds a private key | **No.** |
-| Signs or submits anything | **No.** Two read-only JSON-RPC calls. |
+| Signs or submits anything | **No.** Read-only JSON-RPC: one signature scan, then at most a bounded handful of `getTransaction` calls. |
 | Network access | Read-only RPC to the operator's endpoint. |
 | Can move funds | **No.** There is no code path that builds a transaction. |
 
 **One unambiguous actuation condition.** `success == true` **iff** a transaction
 crediting the exact **operator-configured price** of the requested item, in the operator's
 `usdc_mint`, to the operator's `merchant_address`, carrying this charge's `reference`, has
-landed at the configured finality. Pending, expired, mismatch, RPC failure, and malformed response all return
-`success == false`. The relay gates on that single boolean, so **it cannot fire on
+landed at the configured finality **and no authenticated fulfillment marker for this
+charge already exists**. Pending, expired, mismatch, already-fulfilled, RPC failure, and
+malformed response all return `success == false`. The relay gates on that single boolean, so **it cannot fire on
 anything but a verified payment.**
 
 **Why a WASM plugin and not a Tier-1 skill — honestly.** This is the component where a
@@ -63,16 +65,18 @@ Operator-owned, injected as `__config`. The model cannot see or set any of it.
 | `rpc_url` | **yes** | Solana JSON-RPC endpoint. Fail-closed if missing or empty. |
 | `merchant_address` | **yes** | Receiving pubkey (base58, 32 bytes). Must match the charge recipient. Fail-closed if invalid. |
 | `price_list` | **yes**, to actuate | `item:amount` pairs, e.g. `"cold_drink:1.5, day_pass:5"`. **The only source of the amount the relay gates on.** Same key and format `kiosk-charge` parses — keep the two identical or a real payment reads as a mismatch. Each price is validated at config load. |
+| `device_authority` | **yes**, to actuate | The only signer whose fulfillment marker counts. **Must equal `kiosk-attest`'s `nonce_authority`** — that is the fee payer of every marker it builds. A mismatch disables single-use delivery *silently*; `scripts/check-config.sh` catches it. |
 | `usdc_mint` | no | Mint to expect. Defaults to mainnet USDC (`EPjF…Dt1v`). |
 | `finality` | no | `processed` \| `confirmed` \| `finalized`. Default `confirmed`. |
 
-Minimal working config — three keys:
+Minimal working config — four keys:
 
 ```toml
 [plugins.kiosk-watch.config]
 rpc_url          = "https://api.devnet.solana.com"
 merchant_address = "YOUR_MERCHANT_PUBKEY"
 price_list       = "cold_drink:1.5, day_pass:5"   # must match kiosk-charge
+device_authority = "YOUR_NONCE_AUTHORITY_PUBKEY"  # must equal kiosk-attest's nonce_authority
 ```
 
 **Finality is a safety knob, not a performance one.** `confirmed` (default) means a
@@ -92,6 +96,9 @@ keep it out of version control. ProofKiosk itself holds no key material.
 | `reference` | payment | Solana Pay reference pubkey from the charge. Required. |
 | `item_id` | payment | The catalog item this charge was created for. Required. Its price is read from `price_list`. |
 | `window_s` | payment | Acceptance window in seconds; a match older than this is `Expired`, not `Paid`. |
+| `mode` | both | `"heartbeat"` selects heartbeat mode; absent or `"payment"` is payment. |
+| `device_address` | heartbeat | Device attestation address to scan. Required in heartbeat mode. |
+| `max_silence_s` | heartbeat | Seconds since newest attestation before `Stale`. Required in heartbeat mode. |
 
 **There is no amount argument, deliberately.** The number the relay gates on is an
 operator config value looked up by an opaque key the caller may only *choose* from, never
@@ -109,12 +116,27 @@ reads as `Mismatch`.
 A free-amount charge has no operator-set price to check a payment against, so this plugin
 refuses it outright rather than falling back to a caller-supplied number. Bill custom
 amounts with it; settle them with a human, not a relay.
-| `mode` | both | `"heartbeat"` selects heartbeat mode; absent or `"payment"` is payment. |
-| `device_address` | heartbeat | Device attestation address to scan. Required in heartbeat mode. |
-| `max_silence_s` | heartbeat | Seconds since newest attestation before `Stale`. Required in heartbeat mode. |
 
-The single-use `reference` is also the replay guard: a previously-consumed reference
-cannot re-authorize a second dispense.
+## Delivery happens once
+
+A verified payment stays verified forever, and this plugin is stateless by construction —
+the host builds a fresh WASI store per call, so a counter would silently reset. Polled on
+a cron, it would therefore re-authorize the same charge on every tick.
+
+So "already delivered" is a fact read back off the chain. After actuation,
+[`kiosk-attest`](../kiosk-attest) writes a `PKFUL1` **fulfillment marker** naming the
+charge; this plugin scans the reference for one and returns `ALREADY FULFILLED` — which
+is **not** `Paid`, so the relay stays shut.
+
+**A marker is only believed if the operator signed it.** The reference is public (it is in
+the QR the customer scans), so anyone can write a memo naming it. An unauthenticated
+marker would hand every passer-by a veto over deliveries. A marker therefore counts only
+if it succeeded on-chain, names this charge, **and** carries a signature from the
+configured `device_authority`. Anything less is treated as not-a-marker — failing *open*
+on purpose, because a fake must never withhold a delivery someone paid for.
+
+The single-use `reference` remains the replay guard for the payment itself: a payment that
+does not reference this charge cannot clear it.
 
 ## Worked example
 

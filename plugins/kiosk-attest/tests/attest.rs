@@ -363,6 +363,14 @@ fn secrets_never_in_summary() {
 }
 
 #[test]
+fn fulfillment_summary_within_token_budget() {
+    let out = execute_attest(&fulfillment(REFERENCE), &cfg(), fresh_chain(), NOW).unwrap();
+    assert!(
+        kiosk_core::shape::approx_tokens(&out.summary) <= kiosk_core::shape::DEFAULT_BUDGET_TOKENS
+    );
+}
+
+#[test]
 fn summary_within_token_budget() {
     let out = execute_attest(&reading("temp_c", 4.2), &cfg(), fresh_chain(), NOW).unwrap();
     assert!(
