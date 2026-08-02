@@ -1,0 +1,19 @@
+docs-local/DECISIONS.md
+  s_7021c90b94d92f::t_d61fc62c52c15c 9-50
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "94c96351df41ca46d8300e200d91a75c2f94fe86",
+  "prompts": {},
+  "sessions": {
+    "s_7021c90b94d92f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fddfcab9-3c8b-40b7-939f-5b27c022cdb4",
+        "model": "claude-opus-5"
+      },
+      "human_author": "sushant6095 <sushant.jain@vyapar.com>"
+    }
+  }
+}
