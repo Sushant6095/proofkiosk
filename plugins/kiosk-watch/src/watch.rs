@@ -39,6 +39,9 @@ const MARKER_AUTH_LIMIT: usize = 3;
 /// physical item is not reversible, so the verdict that opens a relay demands
 /// economic irreversibility. Heartbeat mode is unaffected — it does not actuate.
 pub const ACTUATION_FINALITY: &str = "finalized";
+/// An SPL mint stores `decimals` as a u8 but no real mint exceeds this; a
+/// larger value means the response is not to be trusted for scaling money.
+const MAX_MINT_DECIMALS: u8 = 18;
 
 /// Operator configuration, injected by the host as `__config`. Fail closed:
 /// without an RPC endpoint and a valid merchant address the plugin refuses.
@@ -318,15 +321,6 @@ pub fn verify_payment<T: RpcTransport>(
             "unknown item `{item_id}`: not in the operator price list"
         ))
     })?;
-    // Prices are validated at config load, so this cannot fail in practice; it
-    // stays a checked error rather than an unwrap because a panic in a component
-    // is a failure mode with no error message.
-    let expected_units =
-        decimal_to_base_units(expected_amount, USDC_DECIMALS).ok_or_else(|| {
-            WatchError::Config(format!(
-                "price for item `{item_id}` is not a valid USDC decimal"
-            ))
-        })?;
 
     // An acceptance window is mandatory, not optional. Leaving it out used to
     // skip the age check entirely, so the simplest way to defeat the window was
@@ -432,7 +426,7 @@ pub fn verify_payment<T: RpcTransport>(
         }
         // Malformed => Err (never Paid).
         let txv = fetch_transaction(&client, signature, cfg)?;
-        match inspect_transaction(&txv, reference, signature, cfg, expected_units)? {
+        match inspect_transaction(&txv, reference, signature, cfg, expected_amount)? {
             paid @ Verdict::Paid { .. } => return Ok(paid),
             Verdict::Mismatch { reason } => first_mismatch.get_or_insert(reason),
             _ => continue,
@@ -533,7 +527,7 @@ fn inspect_transaction(
     reference: &str,
     signature: &str,
     cfg: &WatchConfig,
-    expected_units: u128,
+    expected_amount: &str,
 ) -> Result<Verdict, WatchError> {
     let meta = txv
         .get("meta")
@@ -588,11 +582,41 @@ fn inspect_transaction(
             });
         }
     };
+    // Scale the operator's price by the mint's REAL decimals, which the balance
+    // entry reports. Hardcoding 6 silently mis-scales every non-USDC mint: a
+    // 9-decimal mint made a correct payment look 1000x short, and a 3-decimal
+    // one would have accepted a thousandth of the price.
+    if credited.decimals > MAX_MINT_DECIMALS {
+        return Err(WatchError::Decode(format!(
+            "mint reports {} decimals, beyond the {MAX_MINT_DECIMALS} an SPL mint can have",
+            credited.decimals
+        )));
+    }
+    let expected_units =
+        decimal_to_base_units(expected_amount, credited.decimals).ok_or_else(|| {
+            WatchError::Config(format!(
+                "price `{expected_amount}` does not fit this mint's {} decimals",
+                credited.decimals
+            ))
+        })?;
+
+    // delta = post - pre. An ABSENT pre entry is an unknown prior balance, not
+    // a zero one: treating it as zero makes delta the whole post balance, so an
+    // account already holding the price would verify a payment that never
+    // happened. Fail closed. (Consequence: the merchant token account must
+    // already exist — `scripts/devnet-setup.sh` creates it, and a running kiosk
+    // always has one.)
     let before = pre
         .iter()
         .find(|b| b.account_index == credited.account_index)
         .map(|b| b.amount)
-        .unwrap_or(0);
+        .ok_or_else(|| {
+            WatchError::Decode(
+                "transaction has no pre-balance for the credited account, so the amount \
+                 actually transferred cannot be determined"
+                    .into(),
+            )
+        })?;
     let delta = credited.amount.saturating_sub(before);
     if delta != expected_units {
         return Ok(Verdict::Mismatch {
@@ -664,6 +688,9 @@ struct TokenBalance {
     owner: String,
     mint: String,
     amount: u128,
+    /// The mint's decimal count, as the node reports it for this balance. The
+    /// only trustworthy source of scale: it is not assumed to be USDC's 6.
+    decimals: u8,
 }
 
 fn token_balances(meta: &Value, key: &str) -> Vec<TokenBalance> {
@@ -681,6 +708,11 @@ fn token_balances(meta: &Value, key: &str) -> Vec<TokenBalance> {
                             .and_then(|u| u.get("amount"))
                             .and_then(Value::as_str)
                             .and_then(|s| s.parse::<u128>().ok())?,
+                        decimals: b
+                            .get("uiTokenAmount")
+                            .and_then(|u| u.get("decimals"))
+                            .and_then(Value::as_u64)
+                            .and_then(|d| u8::try_from(d).ok())?,
                     })
                 })
                 .collect()
