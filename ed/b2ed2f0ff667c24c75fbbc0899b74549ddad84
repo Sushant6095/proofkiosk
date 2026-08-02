@@ -1,0 +1,35 @@
+plugins/kiosk-watch/tests/watch.rs
+  s_d4e40183daad6c::t_9405dc850ee6e2 632-717,725-748
+  s_d4e40183daad6c::t_2c53991be2d2ad 104
+  s_d4e40183daad6c::t_83732086ce2f3c 718-724
+plugins/kiosk-watch/README.md
+  s_d4e40183daad6c::t_2c53991be2d2ad 70,82-88
+sops/payment-loop/SOP.md
+  s_d4e40183daad6c::t_2c53991be2d2ad 98-101
+config/example.toml
+  s_d4e40183daad6c::t_2c53991be2d2ad 83-88
+plugins/kiosk-watch/src/watch.rs
+  s_d4e40183daad6c::t_f45a956f24c1f8 412,416-429
+  s_d4e40183daad6c::t_016cdd908d8553 37-41
+  s_d4e40183daad6c::t_ba4afb02b19ba8 331-348
+  s_d4e40183daad6c::t_a3370bdb079a24 132-134,139
+  s_d4e40183daad6c::t_f4632a414c2f1c 450-454
+README.md
+  s_d4e40183daad6c::t_2c53991be2d2ad 30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "edb2ed2f0ff667c24c75fbbc0899b74549ddad84",
+  "prompts": {},
+  "sessions": {
+    "s_d4e40183daad6c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5a5651de-86c4-4320-b1a9-751a8456ce34",
+        "model": "claude-opus-5"
+      },
+      "human_author": "sushant6095 <sushant.jain@vyapar.com>"
+    }
+  }
+}
