@@ -1,0 +1,27 @@
+plugins/kiosk-watch/tests/watch.rs
+  s_d4e40183daad6c::t_5fbd5fff6d2ae9 633-657
+  s_d4e40183daad6c::t_7b976c7019a69f 632
+plugins/kiosk-charge/tests/charge.rs
+  s_d4e40183daad6c::t_236bd3ecf0700d 137-184
+plugins/kiosk-charge/src/charge.rs
+  s_d4e40183daad6c::t_97a155ff21e6a5 16-19
+  s_d4e40183daad6c::t_0362f2ee86a8bd 178-184
+plugins/kiosk-watch/src/watch.rs
+  s_d4e40183daad6c::t_788cf9d07723d5 95-111
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "6450736ec2aa958028c973c59bea2de319814848",
+  "prompts": {},
+  "sessions": {
+    "s_d4e40183daad6c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5a5651de-86c4-4320-b1a9-751a8456ce34",
+        "model": "claude-opus-5"
+      },
+      "human_author": "sushant6095 <sushant.jain@vyapar.com>"
+    }
+  }
+}
