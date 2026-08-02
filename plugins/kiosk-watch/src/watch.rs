@@ -26,6 +26,14 @@ pub const DEFAULT_USDC_MINT: &str = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1
 pub const USDC_DECIMALS: u8 = 6;
 /// How many recent signatures to pull on the reference / device address.
 const SIG_LIMIT: u64 = 10;
+/// Memo tag marking a delivery as fulfilled — written by `kiosk-attest`'s
+/// fulfillment kind, recognised here. Defined once in `kiosk-core` so the
+/// writer and the reader of this wire contract cannot drift apart.
+pub use kiosk_core::memo::FULFILLMENT_TAG;
+/// At most this many tagged candidates are authenticated per call, so spraying
+/// fake markers at a public reference cannot turn one verification into ten
+/// RPC round-trips.
+const MARKER_AUTH_LIMIT: usize = 3;
 
 /// Operator configuration, injected by the host as `__config`. Fail closed:
 /// without an RPC endpoint and a valid merchant address the plugin refuses.
@@ -40,6 +48,13 @@ pub struct WatchConfig {
     /// the customer was quoted. This is the only source of the expected amount;
     /// the model supplies an item id and nothing else.
     pub price_list: HashMap<String, String>,
+    /// The operator's device authority: the ONLY signer whose fulfillment
+    /// marker counts. **Must equal `kiosk-attest`'s `nonce_authority`** — that
+    /// is the fee payer, and only required signer, of every marker kiosk-attest
+    /// builds. Set them to different pubkeys and no marker will ever
+    /// authenticate, so single-use silently stops working; `scripts/check-config.sh`
+    /// checks the two agree.
+    pub device_authority: Option<String>,
     /// Solana commitment gating the answer: processed | confirmed | finalized.
     pub finality: String,
 }
@@ -85,6 +100,17 @@ impl WatchConfig {
                 price_list.insert(item.to_string(), amount.to_string());
             }
         }
+        let device_authority = section
+            .get("device_authority")
+            .filter(|v| !v.is_empty())
+            .cloned();
+        if let Some(da) = &device_authority {
+            if b58::decode_pubkey(da).is_none() {
+                return Err(WatchError::Config(
+                    "device_authority is not a valid 32-byte base58 pubkey".into(),
+                ));
+            }
+        }
         let finality = section
             .get("finality")
             .filter(|v| !v.is_empty())
@@ -100,6 +126,7 @@ impl WatchConfig {
             merchant_address,
             usdc_mint,
             price_list,
+            device_authority,
             finality,
         })
     }
@@ -144,6 +171,11 @@ pub enum Verdict {
     Expired,
     /// A transaction was found but does not match the expected payment.
     Mismatch { reason: String },
+    /// This charge already has an authenticated fulfillment marker on-chain:
+    /// it was delivered once already. The payment may well be valid — that is
+    /// exactly why this is not `Paid`. Single-use is enforced here, not by
+    /// remembering anything (the component is stateless by construction).
+    AlreadyFulfilled,
 }
 
 /// Heartbeat outcome for the device's attestation address.
@@ -200,6 +232,9 @@ impl Verdict {
             }
             Verdict::Mismatch { reason } => {
                 format!("MISMATCH. A transaction was found but does not match the charge: {reason}. Do not deliver.")
+            }
+            Verdict::AlreadyFulfilled => {
+                "ALREADY FULFILLED. This charge was already delivered; not re-firing.".into()
             }
         };
         shape::clamp(&s, shape::DEFAULT_BUDGET_TOKENS)
@@ -272,6 +307,18 @@ pub fn verify_payment<T: RpcTransport>(
             ))
         })?;
 
+    // Single-use actuation depends on being able to authenticate a fulfillment
+    // marker. Without an authority to check against there is no way to tell the
+    // operator's marker from a stranger's, so refuse rather than actuate with
+    // the check quietly disabled.
+    let device_authority = cfg.device_authority.as_deref().ok_or_else(|| {
+        WatchError::Config(
+            "device_authority is required to verify a payment: without it a fulfillment \
+             marker cannot be authenticated and single-use delivery cannot be enforced"
+                .into(),
+        )
+    })?;
+
     let client = RpcClient::new(transport);
 
     // 1. Any signatures referencing this charge?
@@ -282,37 +329,148 @@ pub fn verify_payment<T: RpcTransport>(
     let sig_list = sigs.as_array().ok_or_else(|| {
         WatchError::Decode("getSignaturesForAddress did not return an array".into())
     })?;
-    let newest = match sig_list.first() {
-        Some(s) => s,
-        None => return Ok(Verdict::Pending),
-    };
-    let signature = newest
-        .get("signature")
-        .and_then(Value::as_str)
-        .ok_or_else(|| WatchError::Decode("signature entry missing `signature`".into()))?
-        .to_string();
+    if sig_list.is_empty() {
+        return Ok(Verdict::Pending);
+    }
 
-    // 2. Acceptance window: a matching signature too old to trust => Expired.
-    if let (Some(window), Some(bt)) = (
-        args.window_s,
-        newest.get("blockTime").and_then(Value::as_i64),
-    ) {
-        if bt >= 0 && now > (bt as u64).saturating_add(window) {
-            return Ok(Verdict::Expired);
+    // The reference is public — it is printed in the QR the customer scans — so
+    // anyone can write a transaction naming it. Split the list rather than
+    // trusting its head: a stranger's junk tx landing after the real payment
+    // must not hide it, and a stranger's fake marker must not block it.
+    let mut markers: Vec<&str> = Vec::new();
+    let mut payments: Vec<(&str, &Value)> = Vec::new();
+    for entry in sig_list {
+        let signature = entry
+            .get("signature")
+            .and_then(Value::as_str)
+            .ok_or_else(|| WatchError::Decode("signature entry missing `signature`".into()))?;
+        let tagged = entry
+            .get("memo")
+            .and_then(Value::as_str)
+            .is_some_and(|m| m.contains(FULFILLMENT_TAG));
+        if tagged {
+            markers.push(signature);
+        } else {
+            payments.push((signature, entry));
         }
     }
 
-    // 3. Fetch and inspect the transaction. Malformed => Err (never Paid).
-    let txv = client.call(
-        "getTransaction",
-        json!([signature, {
-            "commitment": cfg.finality,
-            "encoding": "jsonParsed",
-            "maxSupportedTransactionVersion": 0
-        }]),
-    )?;
+    // 2. Already delivered? A tagged memo is only a *claim*; anyone can write
+    // one. It counts only if the device authority signed it and it names this
+    // charge. Checked before the payment so a verified payment can never
+    // re-fire the relay for a delivery that already happened.
+    for signature in markers.into_iter().take(MARKER_AUTH_LIMIT) {
+        let txv = fetch_transaction(&client, signature, cfg)?;
+        if marker_is_authentic(&txv, reference, device_authority) {
+            return Ok(Verdict::AlreadyFulfilled);
+        }
+    }
 
-    inspect_transaction(&txv, reference, &signature, cfg, expected_units)
+    // 3. Payment scan, newest first. The first transaction that fully verifies
+    // wins; junk in front of it is skipped rather than fatal.
+    let mut first_mismatch: Option<String> = None;
+    let mut saw_expired = false;
+    for (signature, entry) in payments {
+        // Acceptance window: too old to trust => not Paid. Checked from the
+        // signature list so a stale candidate costs no getTransaction call.
+        if let (Some(window), Some(bt)) = (
+            args.window_s,
+            entry.get("blockTime").and_then(Value::as_i64),
+        ) {
+            if bt >= 0 && now > (bt as u64).saturating_add(window) {
+                saw_expired = true;
+                continue;
+            }
+        }
+        // Malformed => Err (never Paid).
+        let txv = fetch_transaction(&client, signature, cfg)?;
+        match inspect_transaction(&txv, reference, signature, cfg, expected_units)? {
+            paid @ Verdict::Paid { .. } => return Ok(paid),
+            Verdict::Mismatch { reason } => first_mismatch.get_or_insert(reason),
+            _ => continue,
+        };
+    }
+
+    // Nothing verified. Report the most informative negative, all of which
+    // leave the relay shut.
+    if let Some(reason) = first_mismatch {
+        return Ok(Verdict::Mismatch { reason });
+    }
+    if saw_expired {
+        return Ok(Verdict::Expired);
+    }
+    Ok(Verdict::Pending)
+}
+
+/// One `getTransaction` call at the operator's finality.
+fn fetch_transaction<T: RpcTransport>(
+    client: &RpcClient<T>,
+    signature: &str,
+    cfg: &WatchConfig,
+) -> Result<Value, WatchError> {
+    client
+        .call(
+            "getTransaction",
+            json!([signature, {
+                "commitment": cfg.finality,
+                "encoding": "jsonParsed",
+                "maxSupportedTransactionVersion": 0
+            }]),
+        )
+        .map_err(WatchError::from)
+}
+
+/// Is this tagged transaction really the operator's fulfillment marker?
+///
+/// Three conditions, all required: it succeeded on-chain, it names this charge,
+/// and the operator's device authority signed it. The signature is what makes
+/// this un-spoofable — a stranger can write the tag and name any reference, but
+/// cannot produce the authority's signature. Anything short of all three is
+/// treated as not-a-marker, which fails *open* on purpose: a fake marker must
+/// never be able to withhold a delivery that was genuinely paid for.
+fn marker_is_authentic(txv: &Value, reference: &str, device_authority: &str) -> bool {
+    let succeeded = txv
+        .get("meta")
+        .and_then(|m| m.get("err"))
+        .map(Value::is_null)
+        .unwrap_or(false);
+    if !succeeded {
+        return false;
+    }
+    let account_keys = match txv
+        .get("transaction")
+        .and_then(|t| t.get("message"))
+        .and_then(|m| m.get("accountKeys"))
+        .and_then(Value::as_array)
+    {
+        Some(k) => k,
+        None => return false,
+    };
+    let names_this_charge = account_keys
+        .iter()
+        .filter_map(account_key_pubkey)
+        .any(|k| k == reference);
+    names_this_charge && signers(account_keys).any(|k| k == device_authority)
+}
+
+/// Pubkeys that signed the transaction. `jsonParsed` marks each key with
+/// `signer`; a bare-string `accountKeys` array carries no flags, in which case
+/// only index 0 (always the fee payer, always a signer) can be relied on.
+fn signers(account_keys: &[Value]) -> impl Iterator<Item = &str> {
+    let flagged = account_keys
+        .iter()
+        .any(|k| k.get("signer").and_then(Value::as_bool).is_some());
+    account_keys
+        .iter()
+        .enumerate()
+        .filter(move |(i, k)| {
+            if flagged {
+                k.get("signer").and_then(Value::as_bool).unwrap_or(false)
+            } else {
+                *i == 0
+            }
+        })
+        .filter_map(|(_, k)| account_key_pubkey(k))
 }
 
 /// Turn a getTransaction result into a [`Verdict`]. Missing structural fields

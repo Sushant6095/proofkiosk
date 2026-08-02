@@ -4,11 +4,12 @@
 //! (and above all "RPC failure is NEVER Paid") is a test.
 
 use std::cell::Cell;
+use std::collections::HashMap;
 
 use kiosk_core::rpc::{RpcError, RpcTransport};
 use kiosk_watch::watch::{
     verify_heartbeat, verify_payment, Heartbeat, Verdict, WatchArgs, WatchConfig, WatchError,
-    DEFAULT_USDC_MINT,
+    DEFAULT_USDC_MINT, FULFILLMENT_TAG,
 };
 
 // Valid 32-byte base58 pubkeys reused across cases.
@@ -17,6 +18,12 @@ const REFERENCE: &str = "11111111111111111111111111111111";
 const DEVICE: &str = "So11111111111111111111111111111111111111112";
 const OTHER_MINT: &str = "So11111111111111111111111111111111111111112";
 const OTHER_OWNER: &str = "So11111111111111111111111111111111111111112";
+/// The operator's device authority — the ONLY signer whose fulfillment marker
+/// counts. Must equal kiosk-attest's `nonce_authority` in a real deployment.
+const AUTHORITY: &str = "Vote111111111111111111111111111111111111111";
+/// Anyone else. A marker they sign must be ignored, or they could block
+/// delivery of a charge they never paid for.
+const ATTACKER: &str = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr";
 const RPC: &str = "https://api.devnet.solana.com";
 const NOW: u64 = 1_000_000;
 
@@ -25,6 +32,9 @@ const NOW: u64 = 1_000_000;
 struct Mock {
     sig: Result<String, RpcError>,
     tx: Result<String, RpcError>,
+    /// signature -> raw getTransaction `result`, for cases where the sig list
+    /// holds several transactions that must resolve differently.
+    tx_by_sig: HashMap<String, String>,
     sig_calls: Cell<u32>,
     tx_calls: Cell<u32>,
 }
@@ -34,6 +44,7 @@ impl Mock {
         Self {
             sig,
             tx,
+            tx_by_sig: HashMap::new(),
             sig_calls: Cell::new(0),
             tx_calls: Cell::new(0),
         }
@@ -44,6 +55,15 @@ impl Mock {
     fn full(sig_body: &str, tx_body: &str) -> Self {
         Mock::new(Ok(wrap(sig_body)), Ok(wrap(tx_body)))
     }
+    /// Sig list plus a per-signature getTransaction table.
+    fn routed(sig_body: &str, txs: &[(&str, String)]) -> Self {
+        let mut m = Mock::new(Ok(wrap(sig_body)), Ok(wrap("null")));
+        m.tx_by_sig = txs
+            .iter()
+            .map(|(s, body)| (s.to_string(), body.clone()))
+            .collect();
+        m
+    }
 }
 
 impl RpcTransport for Mock {
@@ -53,6 +73,11 @@ impl RpcTransport for Mock {
             self.sig.clone()
         } else if request_body.contains("getTransaction") {
             self.tx_calls.set(self.tx_calls.get() + 1);
+            for (sig, body) in &self.tx_by_sig {
+                if request_body.contains(sig.as_str()) {
+                    return Ok(wrap(body));
+                }
+            }
             self.tx.clone()
         } else {
             Err(RpcError::Transport("unexpected method".into()))
@@ -75,6 +100,7 @@ fn cfg() -> WatchConfig {
             ("rpc_url", RPC),
             ("merchant_address", MERCHANT),
             ("price_list", PRICE_LIST),
+            ("device_authority", AUTHORITY),
             // usdc_mint defaults to mainnet USDC; finality defaults to "confirmed"
         ]
         .iter()
@@ -142,6 +168,65 @@ fn tx_without_reference(owner: &str, mint: &str, amount: &str) -> String {
     )
 }
 
+// ── Fix B fixtures: the fulfillment marker ───────────────────────────────────
+
+/// A signature-list entry for a fulfillment marker: a memo tx carrying the
+/// PKFUL1 tag and naming this charge.
+fn marker_sig_entry(signature: &str, age: u64) -> String {
+    let bt = NOW - age;
+    let memo = format!(
+        r#"[90] {{\"v\":1,\"dev\":\"k01\",\"seq\":3,\"tag\":\"{FULFILLMENT_TAG}\",\"ref\":\"{REFERENCE}\"}}"#
+    );
+    format!(
+        r#"{{"signature":"{signature}","slot":101,"err":null,"blockTime":{bt},"memo":"{memo}","confirmationStatus":"confirmed"}}"#
+    )
+}
+
+/// A plain (non-marker) signature-list entry.
+fn plain_sig_entry(signature: &str, age: u64) -> String {
+    let bt = NOW - age;
+    format!(
+        r#"{{"signature":"{signature}","slot":100,"err":null,"blockTime":{bt},"memo":null,"confirmationStatus":"confirmed"}}"#
+    )
+}
+
+fn sig_list(entries: &[String]) -> String {
+    format!("[{}]", entries.join(","))
+}
+
+/// A getTransaction result for a marker: memo-only, signed by `signer`, with
+/// the charge reference present as a read-only key.
+fn marker_tx(signer: &str) -> String {
+    format!(
+        r#"{{
+          "slot":101,"blockTime":{bt},
+          "meta":{{"err":null,"preTokenBalances":[],"postTokenBalances":[]}},
+          "transaction":{{"message":{{"accountKeys":[
+            {{"pubkey":"{signer}","signer":true,"writable":true}},
+            {{"pubkey":"NonceAcct","signer":false,"writable":true}},
+            {{"pubkey":"{reference}","signer":false,"writable":false}}]}}}}
+        }}"#,
+        bt = NOW - 3,
+        reference = REFERENCE,
+    )
+}
+
+/// A transaction that references this charge but moves no tokens at all — the
+/// junk any stranger can write to a public reference pubkey.
+fn junk_tx() -> String {
+    format!(
+        r#"{{
+          "slot":99,"blockTime":{bt},
+          "meta":{{"err":null,"preTokenBalances":[],"postTokenBalances":[]}},
+          "transaction":{{"message":{{"accountKeys":[
+            {{"pubkey":"{ATTACKER}","signer":true,"writable":true}},
+            {{"pubkey":"{reference}","signer":false,"writable":false}}]}}}}
+        }}"#,
+        bt = NOW - 2,
+        reference = REFERENCE,
+    )
+}
+
 fn cfg_with_mint(mint: &str) -> WatchConfig {
     WatchConfig::from_section(
         &[
@@ -149,6 +234,7 @@ fn cfg_with_mint(mint: &str) -> WatchConfig {
             ("merchant_address", MERCHANT),
             ("usdc_mint", mint),
             ("price_list", PRICE_LIST),
+            ("device_authority", AUTHORITY),
         ]
         .iter()
         .map(|(k, v)| (k.to_string(), v.to_string()))
@@ -445,6 +531,129 @@ fn missing_item_id_is_args_error() {
         other => panic!("expected Args error, got {other:?}"),
     }
     assert_eq!(mock.sig_calls.get(), 0, "must fail before touching the RPC");
+}
+
+// ── Fix B: single-use actuation via an authenticated on-chain marker ─────────
+
+#[test]
+fn no_marker_valid_payment_is_paid() {
+    // Baseline: nothing has been fulfilled, the payment is good → Paid.
+    let mock = Mock::routed(
+        &sig_list(&[plain_sig_entry("5xSig", 5)]),
+        &[("5xSig", tx(MERCHANT, DEFAULT_USDC_MINT, "1500000", "null"))],
+    );
+    let v = verify_payment(&pay_args(), &cfg(), mock, NOW).unwrap();
+    assert!(matches!(v, Verdict::Paid { .. }), "got {v:?}");
+}
+
+#[test]
+fn authenticated_fulfillment_marker_is_already_fulfilled() {
+    // The payment is on-chain AND a PKFUL1 marker signed by the device
+    // authority exists → this charge was already delivered. Do not re-fire.
+    let mock = Mock::routed(
+        &sig_list(&[
+            marker_sig_entry("MarkerSig", 2),
+            plain_sig_entry("5xSig", 5),
+        ]),
+        &[
+            ("MarkerSig", marker_tx(AUTHORITY)),
+            ("5xSig", tx(MERCHANT, DEFAULT_USDC_MINT, "1500000", "null")),
+        ],
+    );
+    let v = verify_payment(&pay_args(), &cfg(), mock, NOW).unwrap();
+    assert_eq!(v, Verdict::AlreadyFulfilled, "got {v:?}");
+    assert!(!v.is_paid(), "AlreadyFulfilled must never gate the relay");
+}
+
+#[test]
+fn spoofed_fulfillment_wrong_signer_is_ignored() {
+    // DoS defense: anyone can write a PKFUL1 memo naming a public reference.
+    // Only the device authority's marker counts, so a stranger cannot block
+    // delivery of a charge that was genuinely paid.
+    let mock = Mock::routed(
+        &sig_list(&[marker_sig_entry("SpoofSig", 2), plain_sig_entry("5xSig", 5)]),
+        &[
+            ("SpoofSig", marker_tx(ATTACKER)),
+            ("5xSig", tx(MERCHANT, DEFAULT_USDC_MINT, "1500000", "null")),
+        ],
+    );
+    let v = verify_payment(&pay_args(), &cfg(), mock, NOW).unwrap();
+    assert!(
+        matches!(v, Verdict::Paid { .. }),
+        "a spoofed marker must not block a real payment; got {v:?}"
+    );
+}
+
+#[test]
+fn replay_after_fulfillment() {
+    // Tick 1: paid, nothing fulfilled → relay fires.
+    let before = Mock::routed(
+        &sig_list(&[plain_sig_entry("5xSig", 5)]),
+        &[("5xSig", tx(MERCHANT, DEFAULT_USDC_MINT, "1500000", "null"))],
+    );
+    let first = verify_payment(&pay_args(), &cfg(), before, NOW).unwrap();
+    assert!(matches!(first, Verdict::Paid { .. }), "got {first:?}");
+
+    // Tick 2: the marker has landed. The SAME payment must not clear again.
+    let after = Mock::routed(
+        &sig_list(&[
+            marker_sig_entry("MarkerSig", 1),
+            plain_sig_entry("5xSig", 5),
+        ]),
+        &[
+            ("MarkerSig", marker_tx(AUTHORITY)),
+            ("5xSig", tx(MERCHANT, DEFAULT_USDC_MINT, "1500000", "null")),
+        ],
+    );
+    let second = verify_payment(&pay_args(), &cfg(), after, NOW).unwrap();
+    assert_eq!(second, Verdict::AlreadyFulfilled, "got {second:?}");
+}
+
+#[test]
+fn junk_tx_after_payment_still_verifies() {
+    // The reference is public (it is in the QR the customer scans), so anyone
+    // can write a transaction naming it. A junk tx landing AFTER the real
+    // payment must not hide it — otherwise a stranger blocks every sale for
+    // the price of one memo.
+    let mock = Mock::routed(
+        &sig_list(&[plain_sig_entry("JunkSig", 2), plain_sig_entry("5xSig", 5)]),
+        &[
+            ("JunkSig", junk_tx()),
+            ("5xSig", tx(MERCHANT, DEFAULT_USDC_MINT, "1500000", "null")),
+        ],
+    );
+    let v = verify_payment(&pay_args(), &cfg(), mock, NOW).unwrap();
+    assert!(
+        matches!(v, Verdict::Paid { .. }),
+        "a junk tx must not mask the real payment; got {v:?}"
+    );
+}
+
+#[test]
+fn missing_device_authority_fails_closed() {
+    // Without it no marker can be authenticated, so single-use cannot be
+    // enforced. Refuse to verify rather than actuate with the check disabled.
+    let section = [
+        ("rpc_url", RPC),
+        ("merchant_address", MERCHANT),
+        ("price_list", PRICE_LIST),
+    ]
+    .iter()
+    .map(|(k, v)| (k.to_string(), v.to_string()))
+    .collect();
+    let cfg = WatchConfig::from_section(&section).unwrap();
+    let mock = Mock::sigs("[]");
+    let r = verify_payment(&pay_args(), &cfg, &mock, NOW);
+    assert!(matches!(r, Err(WatchError::Config(_))), "got {r:?}");
+    assert_eq!(mock.sig_calls.get(), 0, "must fail before touching the RPC");
+}
+
+#[test]
+fn already_fulfilled_summary_within_token_budget() {
+    let v = Verdict::AlreadyFulfilled;
+    assert!(
+        kiosk_core::shape::approx_tokens(&v.summary()) <= kiosk_core::shape::DEFAULT_BUDGET_TOKENS
+    );
 }
 
 #[test]
