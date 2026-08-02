@@ -6,6 +6,48 @@ not re-litigate a settled trade-off without the reasoning that settled it.
 
 ---
 
+## 2026-08-02 — Phase 0: status banner separating shipped from roadmap (audit #8)
+
+**Locked: a status table at the very top of the README, above the architecture, plus
+inline scope notes on every claim below it that outruns the code.** No claim was deleted;
+unproven ones moved under an explicit roadmap marker.
+
+**Why this wins.** The README's opening sentence asserted the agent "delivers it only
+after the payment is verified on-chain, and writes tamper-evident proof." Both are design
+intent, neither runs end to end: the SOP guard predicate does not resolve, so no relay
+has ever been pulsed by this code, and no attestation has been signed or landed. A reader
+who builds on that sentence discovers the gap after they trust it. A judge who finds it
+discounts everything else in the repo, including the parts that are real and tested — the
+cost of one unproven claim is the credibility of the 127 that hold.
+
+**What the audit asked for vs what shipped — one deliberate deviation.** The brief's
+"runs today" list included `finalized`. It is not true today: `WatchConfig` defaults
+`finality` to `confirmed` and still accepts `processed`. Requiring `finalized` for an
+actuating verdict is audit #22, scheduled for Phase 1. Writing "finalized" into the table
+now would have put a false claim inside the artifact whose entire purpose is removing
+false claims, so the row is listed as roadmap with the current default named explicitly.
+Phase 1 flips it.
+
+**Rejected — a short "status: WIP" note instead of a per-capability table.** A blanket
+disclaimer is unfalsifiable and reads as boilerplate; it protects the author without
+informing the reader. A per-row table forces each claim to name its evidence or its gap,
+which is also what makes it maintainable: when Phase 1 lands `finalized`, exactly one row
+changes.
+
+**Rejected — deleting the aspirational framing.** The vision is the point of the project
+and the roadmap is legitimate. The problem was never ambition; it was ambition written in
+the present tense.
+
+**Also corrected while verifying:** the component sizes in three READMEs were stale
+(watch 348→356 KB, attest 384→389 KB) because Fix A/B added code. Caught by measuring
+rather than trusting the existing text — the same failure mode the phase is about.
+
+**Reusable takeaway:** put the falsifiable claim next to the thing that falsifies it. A
+status row that cites a test count or names a missing predicate cannot rot quietly; a
+paragraph of prose can.
+
+---
+
 ## 2026-08-02 — Fix B: single-use delivery via an authenticated on-chain marker
 
 **Locked: option (a) — an on-chain fulfillment memo authenticated by the device
