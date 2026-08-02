@@ -168,6 +168,91 @@ fn tx_without_reference(owner: &str, mint: &str, amount: &str) -> String {
     )
 }
 
+// ── #42 / #43: balance-delta fixtures ────────────────────────────────────────
+
+/// Credits `amount` to the merchant but omits the matching *pre* balance, so
+/// the prior balance is unknown rather than zero.
+fn tx_without_pre_balance(amount: &str) -> String {
+    format!(
+        r#"{{
+          "slot":100,"blockTime":{bt},
+          "meta":{{"err":null,
+            "preTokenBalances":[{{"accountIndex":7,"mint":"{mint}","owner":"SomeoneElse","uiTokenAmount":{{"amount":"0","decimals":6}}}}],
+            "postTokenBalances":[{{"accountIndex":3,"mint":"{mint}","owner":"{owner}","uiTokenAmount":{{"amount":"{amount}","decimals":6}}}}]}},
+          "transaction":{{"message":{{"accountKeys":[
+            {{"pubkey":"PayerAcct"}},{{"pubkey":"MerchantAta"}},{{"pubkey":"{reference}"}}]}}}}
+        }}"#,
+        bt = NOW - 5,
+        mint = DEFAULT_USDC_MINT,
+        owner = MERCHANT,
+        reference = REFERENCE,
+    )
+}
+
+/// A payment in a mint whose decimals are NOT 6.
+fn tx_with_decimals(amount: &str, decimals: u8) -> String {
+    format!(
+        r#"{{
+          "slot":100,"blockTime":{bt},
+          "meta":{{"err":null,
+            "preTokenBalances":[{{"accountIndex":3,"mint":"{mint}","owner":"{owner}","uiTokenAmount":{{"amount":"0","decimals":{decimals}}}}}],
+            "postTokenBalances":[{{"accountIndex":3,"mint":"{mint}","owner":"{owner}","uiTokenAmount":{{"amount":"{amount}","decimals":{decimals}}}}}]}},
+          "transaction":{{"message":{{"accountKeys":[
+            {{"pubkey":"PayerAcct"}},{{"pubkey":"MerchantAta"}},{{"pubkey":"{reference}"}}]}}}}
+        }}"#,
+        bt = NOW - 5,
+        mint = DEFAULT_USDC_MINT,
+        owner = MERCHANT,
+        reference = REFERENCE,
+    )
+}
+
+#[test]
+fn missing_pre_balance_is_a_decode_error_not_a_zero() {
+    // delta = post - pre. Treating an absent pre entry as zero makes delta the
+    // WHOLE post balance, so an account that already held the price would
+    // verify a payment that never happened. An unknown prior balance is
+    // unknown, not zero.
+    let mock = Mock::routed(
+        &sig_list(&[plain_sig_entry("5xSig", 5)]),
+        &[("5xSig", tx_without_pre_balance("1500000"))],
+    );
+    let r = verify_payment(&pay_args(), &cfg(), mock, NOW);
+    assert!(
+        matches!(r, Err(WatchError::Decode(_))),
+        "an unknown prior balance must fail closed, got {r:?}"
+    );
+}
+
+#[test]
+fn amount_is_scaled_by_the_mints_real_decimals() {
+    // USDC_DECIMALS was hardcoded to 6, so a 9-decimal mint made a correct
+    // payment read as a 1000x mismatch — and, in the other direction, a
+    // 3-decimal mint would have accepted a thousandth of the price. The
+    // transaction reports the mint's decimals; use them.
+    let mock = Mock::routed(
+        &sig_list(&[plain_sig_entry("5xSig", 5)]),
+        &[("5xSig", tx_with_decimals("1500000000", 9))], // 1.5 at 9 decimals
+    );
+    let v = verify_payment(&pay_args(), &cfg(), mock, NOW).unwrap();
+    assert!(
+        matches!(v, Verdict::Paid { .. }),
+        "1.5 of a 9-decimal mint must verify against a 1.5 price; got {v:?}"
+    );
+}
+
+#[test]
+fn underpay_in_a_non_six_decimal_mint_is_still_a_mismatch() {
+    // The scaling fix must not become a way to underpay: 1.5 at 9 decimals is
+    // 1_500_000_000, and 1_500_000 of that mint is 0.0015.
+    let mock = Mock::routed(
+        &sig_list(&[plain_sig_entry("5xSig", 5)]),
+        &[("5xSig", tx_with_decimals("1500000", 9))],
+    );
+    let v = verify_payment(&pay_args(), &cfg(), mock, NOW).unwrap();
+    assert!(matches!(v, Verdict::Mismatch { .. }), "got {v:?}");
+}
+
 // ── Fix B fixtures: the fulfillment marker ───────────────────────────────────
 
 /// A signature-list entry for a fulfillment marker: a memo tx carrying the

@@ -66,7 +66,7 @@ Operator-owned, injected as `__config`. The model cannot see or set any of it.
 | `merchant_address` | **yes** | Receiving pubkey (base58, 32 bytes). Must match the charge recipient. Fail-closed if invalid. |
 | `price_list` | **yes**, to actuate | `item:amount` pairs, e.g. `"cold_drink:1.5, day_pass:5"`. **The only source of the amount the relay gates on.** Same key and format `kiosk-charge` parses — keep the two identical or a real payment reads as a mismatch. Each price is validated at config load. |
 | `device_authority` | **yes**, to actuate | The only signer whose fulfillment marker counts. **Must equal `kiosk-attest`'s `nonce_authority`** — that is the fee payer of every marker it builds. A mismatch disables single-use delivery *silently*; `scripts/check-config.sh` catches it. |
-| `usdc_mint` | no | Mint to expect. Defaults to mainnet USDC (`EPjF…Dt1v`). |
+| `usdc_mint` | no | Mint to expect. Defaults to mainnet USDC (`EPjF…Dt1v`). Any SPL mint works: the price is scaled by the mint's **real** decimals as reported by the transaction, not by an assumed 6. |
 | `finality` | no | `processed` \| `confirmed` \| `finalized`. **Default `finalized`.** Payment verification *requires* `finalized` and refuses the weaker two; they remain usable for heartbeat mode, which does not actuate. |
 
 Minimal working config — four keys:
