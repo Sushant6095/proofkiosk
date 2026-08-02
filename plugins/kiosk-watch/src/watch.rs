@@ -34,6 +34,11 @@ pub use kiosk_core::memo::FULFILLMENT_TAG;
 /// fake markers at a public reference cannot turn one verification into ten
 /// RPC round-trips.
 const MARKER_AUTH_LIMIT: usize = 3;
+/// The only commitment a payment verdict may actuate on. `processed` can still
+/// be rolled back and `confirmed` is merely reorg-*unlikely*; dispensing a
+/// physical item is not reversible, so the verdict that opens a relay demands
+/// economic irreversibility. Heartbeat mode is unaffected — it does not actuate.
+pub const ACTUATION_FINALITY: &str = "finalized";
 
 /// Operator configuration, injected by the host as `__config`. Fail closed:
 /// without an RPC endpoint and a valid merchant address the plugin refuses.
@@ -124,11 +129,14 @@ impl WatchConfig {
                 ));
             }
         }
+        // Defaults to the safe end: an operator who never thinks about
+        // commitment gets irreversibility, not a silent downgrade. Weaker
+        // settings remain legal for heartbeat mode, which does not actuate.
         let finality = section
             .get("finality")
             .filter(|v| !v.is_empty())
             .cloned()
-            .unwrap_or_else(|| "confirmed".to_string());
+            .unwrap_or_else(|| ACTUATION_FINALITY.to_string());
         if !matches!(finality.as_str(), "processed" | "confirmed" | "finalized") {
             return Err(WatchError::Config(
                 "finality must be processed, confirmed, or finalized".into(),
@@ -320,6 +328,24 @@ pub fn verify_payment<T: RpcTransport>(
             ))
         })?;
 
+    // An acceptance window is mandatory, not optional. Leaving it out used to
+    // skip the age check entirely, so the simplest way to defeat the window was
+    // to not ask for one — an unbounded replay window, reachable by omission.
+    let window_s = args.window_s.ok_or_else(|| {
+        WatchError::Args(
+            "window_s is required: a verdict that can actuate must be bounded in time".into(),
+        )
+    })?;
+
+    // Actuation requires economic irreversibility. Refuse up front rather than
+    // verify against a commitment that can still be rolled back.
+    if cfg.finality != ACTUATION_FINALITY {
+        return Err(WatchError::Config(format!(
+            "finality is `{}`, but a payment verdict that can actuate requires `{ACTUATION_FINALITY}`",
+            cfg.finality
+        )));
+    }
+
     // Single-use actuation depends on being able to authenticate a fulfillment
     // marker. Without an authority to check against there is no way to tell the
     // operator's marker from a stranger's, so refuse rather than actuate with
@@ -383,15 +409,24 @@ pub fn verify_payment<T: RpcTransport>(
     // wins; junk in front of it is skipped rather than fatal.
     let mut first_mismatch: Option<String> = None;
     let mut saw_expired = false;
+    let mut saw_unbounded = false;
     for (signature, entry) in payments {
         // Acceptance window: too old to trust => not Paid. Checked from the
         // signature list so a stale candidate costs no getTransaction call.
-        if let (Some(window), Some(bt)) = (
-            args.window_s,
-            entry.get("blockTime").and_then(Value::as_i64),
-        ) {
-            if bt >= 0 && now > (bt as u64).saturating_add(window) {
-                saw_expired = true;
+        //
+        // A candidate with no usable blockTime cannot be aged at all, so the
+        // window cannot be enforced against it. That is not a reason to accept
+        // it: unverifiable means not-Paid, or the window is defeated by a field
+        // the node merely failed to populate.
+        match entry.get("blockTime").and_then(Value::as_i64) {
+            Some(bt) if bt >= 0 => {
+                if now > (bt as u64).saturating_add(window_s) {
+                    saw_expired = true;
+                    continue;
+                }
+            }
+            _ => {
+                saw_unbounded = true;
                 continue;
             }
         }
@@ -411,6 +446,11 @@ pub fn verify_payment<T: RpcTransport>(
     }
     if saw_expired {
         return Ok(Verdict::Expired);
+    }
+    if saw_unbounded {
+        return Ok(Verdict::Mismatch {
+            reason: "a matching signature has no blockTime, so its age cannot be bounded".into(),
+        });
     }
     Ok(Verdict::Pending)
 }

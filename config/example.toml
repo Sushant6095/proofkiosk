@@ -80,11 +80,12 @@ device_authority = "YOUR_NONCE_AUTHORITY_PUBKEY"
 # Optional. Mint to expect. Defaults to mainnet USDC. Must match the charge mint.
 usdc_mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 
-# Optional. Commitment gating the verdict: processed | confirmed | finalized.
-#   confirmed (default) — supermajority voted, ~1-2s, reorg unlikely. Good default.
-#   finalized           — economically irreversible, adds ~13s. Use for high-value items.
-#   processed           — NOT recommended for actuation; can still be rolled back.
-finality = "confirmed"
+# Optional. Commitment gating the verdict. Default and ONLY accepted value for payment
+# verification: "finalized" — economically irreversible. A dispensed item cannot be
+# un-dispensed, so "confirmed" (reorg merely unlikely) and "processed" (rollback-able)
+# are REFUSED for payment verification rather than offered as a knob you can get wrong.
+# They remain valid for heartbeat mode, which does not actuate.
+finality = "finalized"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # kiosk-attest (T1) — unsigned, hash-chained memo attestations. Read-only RPC.

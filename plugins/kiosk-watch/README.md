@@ -67,7 +67,7 @@ Operator-owned, injected as `__config`. The model cannot see or set any of it.
 | `price_list` | **yes**, to actuate | `item:amount` pairs, e.g. `"cold_drink:1.5, day_pass:5"`. **The only source of the amount the relay gates on.** Same key and format `kiosk-charge` parses — keep the two identical or a real payment reads as a mismatch. Each price is validated at config load. |
 | `device_authority` | **yes**, to actuate | The only signer whose fulfillment marker counts. **Must equal `kiosk-attest`'s `nonce_authority`** — that is the fee payer of every marker it builds. A mismatch disables single-use delivery *silently*; `scripts/check-config.sh` catches it. |
 | `usdc_mint` | no | Mint to expect. Defaults to mainnet USDC (`EPjF…Dt1v`). |
-| `finality` | no | `processed` \| `confirmed` \| `finalized`. Default `confirmed`. |
+| `finality` | no | `processed` \| `confirmed` \| `finalized`. **Default `finalized`.** Payment verification *requires* `finalized` and refuses the weaker two; they remain usable for heartbeat mode, which does not actuate. |
 
 Minimal working config — four keys:
 
@@ -79,11 +79,13 @@ price_list       = "cold_drink:1.5, day_pass:5"   # must match kiosk-charge
 device_authority = "YOUR_NONCE_AUTHORITY_PUBKEY"  # must equal kiosk-attest's nonce_authority
 ```
 
-**Finality is a safety knob, not a performance one.** `confirmed` (default) means a
-supermajority has voted — a reorg is unlikely and the ~1–2 s latency keeps buy-to-drop
-fast. `finalized` buys economic irreversibility for about 13 s more; use it for anything
-expensive. `processed` is available and **not recommended for actuation** — it can still
-be rolled back, and rolling back a dispensed drink is not a thing.
+**Finality is a safety knob, not a performance one — and actuation does not get a
+choice.** A payment verdict requires `finalized`: economic irreversibility, ~13 s.
+`confirmed` means a supermajority has voted and a reorg is merely *unlikely*; `processed`
+can still be rolled back outright. Rolling back a dispensed drink is not a thing, so both
+are refused for payment verification rather than left as a foot-gun an operator can
+configure into their kiosk. They stay available for **heartbeat** mode, where a faster
+answer is strictly better and nothing actuates.
 
 **No secrets in this config.** If your RPC provider needs a key in the URL, that URL is
 the one sensitive value in the file — treat `rpc_url` as a credential in that case and

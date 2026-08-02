@@ -101,7 +101,7 @@ fn cfg() -> WatchConfig {
             ("merchant_address", MERCHANT),
             ("price_list", PRICE_LIST),
             ("device_authority", AUTHORITY),
-            // usdc_mint defaults to mainnet USDC; finality defaults to "confirmed"
+            // usdc_mint defaults to mainnet USDC; finality defaults to "finalized"
         ]
         .iter()
         .map(|(k, v)| (k.to_string(), v.to_string()))
@@ -627,6 +627,123 @@ fn junk_tx_after_payment_still_verifies() {
         matches!(v, Verdict::Paid { .. }),
         "a junk tx must not mask the real payment; got {v:?}"
     );
+}
+
+// ── #21 / #22: the actuating verdict must not fail open ─────────────────────
+
+/// A signature entry the node returned without a `blockTime`.
+fn sig_entry_no_blocktime(signature: &str) -> String {
+    format!(
+        r#"{{"signature":"{signature}","slot":100,"err":null,"memo":null,"confirmationStatus":"finalized"}}"#
+    )
+}
+
+fn cfg_with_finality(finality: &str) -> Result<WatchConfig, WatchError> {
+    WatchConfig::from_section(
+        &[
+            ("rpc_url", RPC),
+            ("merchant_address", MERCHANT),
+            ("price_list", PRICE_LIST),
+            ("device_authority", AUTHORITY),
+            ("finality", finality),
+        ]
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect(),
+    )
+}
+
+#[test]
+fn missing_window_s_fails_closed() {
+    // window_s was optional, and its absence silently skipped the age check —
+    // so the easiest way to defeat the acceptance window was to not ask for
+    // one. An actuating verdict must always be bounded in time.
+    let args = WatchArgs {
+        reference: Some(REFERENCE.into()),
+        item_id: Some("cold_drink".into()),
+        ..Default::default()
+    };
+    let mock = Mock::sigs("[]");
+    let r = verify_payment(&args, &cfg(), &mock, NOW);
+    match r {
+        Err(WatchError::Args(m)) => assert!(m.contains("window_s"), "should name window_s: {m}"),
+        other => panic!("expected Args error, got {other:?}"),
+    }
+    assert_eq!(mock.sig_calls.get(), 0, "must fail before touching the RPC");
+}
+
+#[test]
+fn candidate_without_blocktime_is_never_paid() {
+    // No blockTime means the transaction's age cannot be bounded, so the
+    // acceptance window cannot be enforced against it. Previously the age
+    // check was simply skipped and the payment verified anyway — an unbounded
+    // replay window. Unverifiable must mean not-Paid.
+    let mock = Mock::routed(
+        &sig_list(&[sig_entry_no_blocktime("5xSig")]),
+        &[("5xSig", tx(MERCHANT, DEFAULT_USDC_MINT, "1500000", "null"))],
+    );
+    let v = verify_payment(&pay_args(), &cfg(), mock, NOW).unwrap();
+    assert!(
+        !matches!(v, Verdict::Paid { .. }),
+        "an unbounded-age transaction must never be Paid; got {v:?}"
+    );
+}
+
+#[test]
+fn weaker_commitments_are_refused_for_an_actuating_verdict() {
+    // `processed` can be rolled back and `confirmed` is only reorg-unlikely.
+    // Dispensing a physical item is not reversible, so the verdict that opens
+    // a relay requires economic irreversibility.
+    for weak in ["processed", "confirmed"] {
+        let cfg = cfg_with_finality(weak).unwrap();
+        let mock = Mock::sigs("[]");
+        let r = verify_payment(&pay_args(), &cfg, &mock, NOW);
+        match r {
+            Err(WatchError::Config(m)) => assert!(
+                m.contains("finalized"),
+                "error should name the required commitment: {m}"
+            ),
+            other => panic!("`{weak}` must be refused for actuation, got {other:?}"),
+        }
+        assert_eq!(mock.sig_calls.get(), 0, "must fail before touching the RPC");
+    }
+}
+
+#[test]
+fn finalized_commitment_verifies_normally() {
+    let mock = Mock::routed(
+        &sig_list(&[plain_sig_entry("5xSig", 5)]),
+        &[("5xSig", tx(MERCHANT, DEFAULT_USDC_MINT, "1500000", "null"))],
+    );
+    let v = verify_payment(
+        &pay_args(),
+        &cfg_with_finality("finalized").unwrap(),
+        mock,
+        NOW,
+    )
+    .unwrap();
+    assert!(matches!(v, Verdict::Paid { .. }), "got {v:?}");
+}
+
+#[test]
+fn finality_defaults_to_finalized() {
+    // The default has to be the safe one: an operator who never thinks about
+    // commitment gets irreversibility, not a silent downgrade.
+    assert_eq!(cfg().finality, "finalized");
+}
+
+#[test]
+fn heartbeat_still_accepts_a_weaker_commitment() {
+    // The finalized requirement is about actuation. Liveness monitoring is not
+    // actuation, and forcing ~13s of extra latency on a heartbeat would only
+    // make outage detection slower.
+    let cfg = cfg_with_finality("confirmed").unwrap();
+    let mock = Mock::sigs(&format!(
+        r#"[{{"signature":"S","slot":1,"blockTime":{}}}]"#,
+        NOW - 10
+    ));
+    let h = verify_heartbeat(&hb_args(60), &cfg, mock, NOW).unwrap();
+    assert!(matches!(h, Heartbeat::Live { .. }), "got {h:?}");
 }
 
 #[test]
