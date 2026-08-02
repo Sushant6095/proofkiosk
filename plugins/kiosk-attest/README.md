@@ -248,7 +248,7 @@ a sensor and attests the reading every five minutes.
   bytes are bulky and the output is model-facing. Everything else is compressed to
   `key=value` and passed through `kiosk_core::shape::clamp`, with a test asserting the
   ceiling.
-- **384 KB, the largest of the three,** because it bundles the HTTP/TLS client *and* the
+- **389 KB, the largest of the three,** because it bundles the HTTP/TLS client *and* the
   transaction builders. Both earn their bytes.
 
 ## Layout & tests
@@ -259,7 +259,7 @@ Pure core (`src/attest.rs`, zero wasm deps) plus a thin
 ```bash
 cargo test                                      # 16 host tests, no network
 cargo clippy --all-targets -- -D warnings
-cargo build --target wasm32-wasip2 --release    # ~384 KB component
+cargo build --target wasm32-wasip2 --release    # ~389 KB component
 ```
 
 ## Honest limitation

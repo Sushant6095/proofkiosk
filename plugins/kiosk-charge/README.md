@@ -213,7 +213,7 @@ than trivially passing.
   plugin is `kiosk-charge`; `wasm_path` must name the artifact exactly.
   `scripts/stage-plugin.sh` reads the manifest rather than guessing.
 - **Size is mostly not your code.** This component is 210 KB doing string work offline.
-  `kiosk-watch` is 348 KB because a network-touching component must bundle an HTTP/TLS
+  `kiosk-watch` is 356 KB because a network-touching component must bundle an HTTP/TLS
   client. Dropping `wasi:http` is worth ~140 KB, and it is the cheapest size win
   available.
 
