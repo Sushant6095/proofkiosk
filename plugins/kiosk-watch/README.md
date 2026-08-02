@@ -249,7 +249,7 @@ the whole payment rail, on a laptop, no hardware.
   case. Every decoder returns `Result`; fuzz and property tests in `kiosk-core` assert
   no-panic on malformed base58, base64, and RPC bodies. A panic in a component is a trap,
   and a trap mid-sale is an outcome you cannot explain to a customer.
-- **HTTP/TLS is most of the binary.** 348 KB versus kiosk-charge's 210 KB, and the delta
+- **HTTP/TLS is most of the binary.** 356 KB versus kiosk-charge's 210 KB, and the delta
   is almost entirely the bundled client. Inherent to a network-touching component, not
   slack in our code.
 
@@ -261,7 +261,7 @@ Pure core (`src/watch.rs`, zero wasm deps) plus a thin
 ```bash
 cargo test                                      # 24 host tests, no network
 cargo clippy --all-targets -- -D warnings
-cargo build --target wasm32-wasip2 --release    # ~348 KB component
+cargo build --target wasm32-wasip2 --release    # ~356 KB component
 ```
 
 ## Wiring it to actuation
