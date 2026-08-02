@@ -20,7 +20,7 @@ Matrix, WhatsApp, or email; demoed on Telegram.
 |---|---|
 | Holds a private key | **No.** None, not even an RPC key. |
 | Signs anything | **No.** The customer's wallet signs the payment. |
-| Network access | **None.** `permissions = ["config_read"]` only. |
+| Network access | **None.** `permissions = ["config_read"]` only. Imports `wasi:random` for the charge reference and **zero** `wasi:http` — checked against the compiled artifact. |
 | Can redirect funds | **No.** Recipient comes from operator config. |
 
 The URL is built entirely offline. The customer's wallet supplies its own blockhash and
