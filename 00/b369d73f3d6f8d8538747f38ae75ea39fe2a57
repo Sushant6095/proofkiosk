@@ -1,0 +1,19 @@
+artifacts/e2e-guide.html
+  s_d4e40183daad6c::t_a9c08a913b6bb3 126,359-406,465,488,492,508,543
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "00b369d73f3d6f8d8538747f38ae75ea39fe2a57",
+  "prompts": {},
+  "sessions": {
+    "s_d4e40183daad6c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5a5651de-86c4-4320-b1a9-751a8456ce34",
+        "model": "claude-opus-5"
+      },
+      "human_author": "sushant6095 <sushant.jain@vyapar.com>"
+    }
+  }
+}
