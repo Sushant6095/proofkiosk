@@ -1,15 +1,13 @@
 # ProofKiosk — payment loop SOP (EXAMPLE)
 #
-# Cron polls kiosk_watch for a specific charge; the relay pulse fires for EXACTLY
-# one condition: kiosk_watch returned a verified payment for an item priced in
-# operator config. Every other outcome (pending, expired, mismatch, already
-# fulfilled, RPC failure) leaves the relay shut.
+# Execution-contract example only. The pinned host validates this cron trigger
+# but does not headlessly dispatch its ordinary plugin/tool steps; an external
+# driver is required. See SOP.md before treating this as runnable automation.
 #
-# The dispense step is followed by a fulfillment marker (step 4), which is what
-# makes delivery single-use: the plugin is stateless, so "already delivered" is
-# read back off the chain rather than remembered. The marker is written AFTER the
-# pulse, making this loop at-least-once — correct for idempotent actuators (a
-# lock, a charger), NOT for a consumable dispenser. See SOP.md.
+# A signed/finalized fulfillment marker can make watcher calls return
+# AlreadyFulfilled while it remains in the bounded scan. Host-side trusted order
+# persistence and one exclusive claim are implemented, but exactly-once physical
+# delivery is not: no actuator/recovery driver or delivery sensor is shipped.
 #
 # Steps live in SOP.md under `## Steps` — this runtime parses them from Markdown,
 # not from TOML. Validate with:
@@ -22,9 +20,8 @@ version = "0.1.0"
 # Deterministic: steps run sequentially with no LLM round-trip between them, so
 # the relay decision comes from the routing guard, never from model prose.
 deterministic = true
-# One outstanding charge at a time; a trigger that cannot admit is deferred.
+# Limit simultaneous runs. This is not a durable per-reference lock.
 max_concurrent = 1
-admission_policy = "hold"
 
 [[triggers]]
 type = "cron"

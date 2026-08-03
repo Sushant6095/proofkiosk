@@ -3,24 +3,26 @@
 Rung 3 of the [three-rung ladder](../README.md#the-three-rung-ladder). Rungs 1 and 2
 need no hardware at all; this page is only for the physical kiosk.
 
-**You do not need any of this to evaluate ProofKiosk.** The payment rail (rung 1) runs
-on a laptop against localnet. Read this when you want a drink to actually drop.
+**You do not need any of this to evaluate ProofKiosk.** The payment rail runs on a
+laptop/localnet. This page is a reference design, not evidence that the repository
+currently drives a dispenser: the bounded relay adapter and delivery sensor are not
+implemented.
 
 ## Bill of materials
 
 | Part | Notes |
 |---|---|
-| Raspberry Pi 4 (2 GB+) | Any Pi with 40-pin header works; the Pi 4 is what this was built on. |
-| 5 V relay module, opto-isolated, 1 channel | Opto-isolation is not optional — see the safety notes. |
+| Raspberry Pi 4 (2 GB+) | Reference target only; the checked-in CI does not run on a Pi. |
+| 3.3 V-compatible isolated relay/driver, 1 channel | Select from its datasheet for the exact load; “opto-isolated” on a listing is not proof of end-to-end isolation. |
 | BME280 breakout (I²C) | Optional, rung 2 only. Temperature/humidity for the attestation loop. |
 | 12 V solenoid / vend motor + its own 12 V supply | The load. Never powered from the Pi. |
 | Flyback diode (1N4007) across the solenoid | Required for an inductive load. |
-| Dupont jumpers, a common-ground wire | |
+| Fused terminals, enclosure, emergency disconnect | Do not prototype an energized inductive load on loose Dupont wiring. |
 
 ## Pin map
 
-Physical pin numbers, BCM in parentheses. This is the mapping the SOPs and
-`relay_pulse` examples assume; change it in one place if you wire differently.
+Physical pin numbers, BCM in parentheses. This is a proposed mapping for a future
+fixed-pin adapter. No checked-in `relay_pulse` implementation currently binds to it.
 
 | Signal | Pi pin | BCM | Goes to |
 |---|---|---|---|
@@ -56,23 +58,28 @@ Physical pin numbers, BCM in parentheses. This is the mapping the SOPs and
                                         └──────────────────┘
 ```
 
-The relay's switched side (COM / NO / NC) is galvanically separate from the Pi side.
-The 12 V loop closes through COM and NO only; 12 V must never touch a Pi pin.
+The diagram is conceptual and does not specify a relay module's coil/JD-VCC topology.
+The dry-contact side (COM / NO / NC) must remain separate from Pi logic, and the complete
+12 V loop—including its return—is confined to that side. Verify the selected module's
+datasheet; 12 V must never touch a Pi pin.
 
 ## Safety notes — read these
 
-1. **Use an opto-isolated relay board.** A bare relay coil driven from a GPIO pin will
-   kick an inductive spike back into the Pi and eventually kill it. The opto stage is
-   what keeps the two sides electrically apart.
+1. **Use a reviewed 3.3 V-compatible driver.** Never drive a relay coil or motor from a
+   GPIO. An optocoupler label alone is insufficient: many boards bridge grounds or coil
+   supply unless their isolation jumper/topology is configured correctly.
 2. **Give the load its own supply.** A solenoid inrush is amps; the Pi's 5 V rail is
-   not. Share **ground** between the Pi and the 12 V supply, share nothing else.
+   not. Do **not** blindly share grounds: a genuinely isolated interface keeps logic and
+   load grounds separate, while a non-isolated MOSFET design requires a common reference.
+   Follow the exact reviewed driver schematic rather than mixing the two topologies.
 3. **Flyback diode across every inductive load**, banded end to +12 V. Without it the
    relay contacts arc and weld shut — a welded contact is a dispenser stuck open.
 4. **Active-low boards are common.** Many cheap relay modules energize on a LOW input,
    so they click on at boot while the GPIO is still floating. Test the polarity with
    the load disconnected before you wire anything that moves.
-5. **Pulse, never hold.** `pin_ms = 400` in the payment-loop SOP is a pulse. A solenoid
-   held energized will overheat. Match `pin_ms` to your mechanism's actual throw time.
+5. **Pulse in a non-LLM safety adapter, never with two unconstrained GPIO calls.** The
+   400 ms value in the payment SOP is a desired interface, not implemented code. The
+   adapter must cap duration internally and force the inactive level on timeout/crash.
 6. **Fail-safe position.** Wire the dispenser so the de-energized state is *closed*.
    Power loss, a crashed agent, and a stuck process should all mean "nothing dispenses",
    never "everything dispenses".
@@ -93,18 +100,18 @@ The paper values above will not be right for your build; leave yourself the knob
 
 ## Building the host on the Pi
 
-The stock ZeroClaw binary has no plugin host and no GPIO tools. Build from source with
-both:
+The stock ZeroClaw binary has no plugin host. Build the exact compatible source pin with
+the plugin runtime plus Pi features:
 
 ```bash
-cargo build --release \
-  --features plugins-wasm,plugins-wasm-cranelift,hardware,peripheral-rpi
+ZEROCLAW_FEATURES=plugins-wasm-cranelift,hardware,peripheral-rpi \
+  ./scripts/install-pinned-zeroclaw.sh
 ```
 
-- `plugins-wasm,plugins-wasm-cranelift` — the WIT plugin host that loads the three
+- `plugins-wasm-cranelift` — the WIT plugin host that loads the three
   kiosk components. Needed on the laptop too.
-- `hardware,peripheral-rpi` — the GPIO/peripheral tools (`relay_pulse`, sensor reads).
-  Pi only.
+- `hardware,peripheral-rpi` — lower-level GPIO/peripheral support. The exact pin does
+  **not** provide ProofKiosk's desired `relay_pulse` or `bme280_read` adapters.
 
 Enable I²C for the BME280 (`raspi-config` → Interface Options → I²C), then confirm the
 sensor is on the bus before wiring the relay:
@@ -115,7 +122,10 @@ i2cdetect -y 1        # expect 0x76 or 0x77
 
 ## Wiring it to the SOPs
 
-`sops/payment-loop/` pulses the relay, and only on a verified payment. Before you
-connect the load, read that SOP's **Known gap** section: the routing is verified but the
-guard predicate is not yet wired end-to-end, so treat rung 3 as demo-wired rather than
-production-wired, and keep a hand on the 12 V supply the first time you run it.
+`sops/payment-loop/` specifies the desired guard and pulse contract; it does not execute
+the relay. ProofKiosk ships a host-local exclusive order claim, but no driver connects it
+to GPIO and no claimed → actuating → delivered recovery journal exists. Before connecting
+any load, implement and review a fixed-pin, fixed-polarity, duration-capped,
+cooldown-enforcing adapter plus physical delivery sensing and crash recovery. Until those
+exist, keep the load disconnected and demo only an LED/current-limited simulator under
+human control.

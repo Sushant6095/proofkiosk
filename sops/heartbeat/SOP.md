@@ -6,10 +6,10 @@ payment loop.
 ## Flow
 
 ```
-cron (every 10 min)
+declared cron / external driver (every 10 min)
    │
    ▼
-1. kiosk_watch(mode="heartbeat", device_address, max_silence_s=1800)
+1. kiosk_watch(mode="heartbeat")
    │
    ├── success == true   → 2. LIVE (terminal) → newest attestation is fresh, do nothing
    │
@@ -19,7 +19,8 @@ cron (every 10 min)
 ## What it catches
 
 - **STALE** — the device is still on-chain but hasn't attested within
-  `max_silence_s` (here, 30 min): sensor hung, connectivity lost, or the attestation
+  operator-configured `heartbeat_max_silence_s` (here, 30 min): sensor hung,
+  connectivity lost, or the attestation
   loop crashed.
 - **MISSING** — no attestations found at all for the device address: never provisioned,
   or wrong address configured.
@@ -30,26 +31,31 @@ loop, which acts on `success == true`.
 
 ## Routing note
 
-Same shape as the payment loop, inverted. Step 1's guard is
-`when: $.steps.1.success == "false"` with `next: 3`. A guard that does not hold falls
-through to the *linear* next step, which is why step 2 exists and is `terminal: true`:
-"healthy" must land somewhere that ends the branch. The alert at step 3 is reachable
-only via the explicit jump.
+Same shape as the payment loop, inverted. `kiosk_watch` now emits structured JSON, so
+`$.steps.1.success` is present and false only for `stale`/`missing`. At the exact pinned
+host, a false top-level guard completes instead of taking a guarded jump; do not infer a
+self-running notification flow from validation alone.
+
+Configuration, RPC, and decode errors are failed WIT results with empty output, not a
+`stale` JSON object. An external driver must treat either a business-negative heartbeat
+or execution failure as unhealthy and notify the operator; it must never invent JSON to
+make the SOP predicate run.
 
 ## Known gap
 
-Same as the payment loop: `$.steps.1.success` does not resolve today, because the
-routing payload is built from the step's `output` **string** and `kiosk_watch` reports
-its verdict in the separate `ToolResult.success` boolean. Unresolved paths evaluate
-false, so a stale device would currently take the "live" branch and **not** alert. See
-`sops/payment-loop/SOP.md` for the two ways to close it. The file validates and the
-routing is correct; the predicate is the missing piece.
+The former predicate-data gap is fixed, and heartbeat candidates now require the
+operator-configured authority signer, device account, and exact device id. The remaining
+runtime gap is headless dispatch: exact pinned deterministic execution does not
+self-invoke ordinary plugin/tool steps, and `notify_operator` is a placeholder this repo
+does not ship. Use an external driver and channel adapter; validation proves syntax only.
 
 ## Adapting it
 
-- Point `device_address` at the same address `kiosk_attest` writes its chain to.
-- Tune `max_silence_s` to a small multiple of your sensor-loop cadence (e.g. 6× a 5-min
-  loop = 30 min) so one missed reading doesn't page you, but a dead device does.
+- In the `kiosk-watch` config row, set `device_address` and `device_id` to the same nonce
+  account and id configured for `kiosk-attest`; callers cannot override them.
+- Tune operator config `heartbeat_max_silence_s` to a small multiple of your sensor-loop
+  cadence (e.g. 6× a 5-min loop = 30 min) so one missed reading doesn't page you, but a
+  dead device does.
 - `notify_operator` stands in for whatever channel plugin you use (Telegram, email, …).
   Replace the tool name and args to match it.
 
@@ -58,7 +64,7 @@ routing is correct; the predicate is the missing piece.
 1. **Check attestation freshness** — Heartbeat mode; no payment is involved.
    - tools: kiosk_watch
    - allow-tools: kiosk_watch
-   - call: {"tool":"kiosk_watch","args":{"mode":"heartbeat","device_address":"DEVICE_ATTESTATION_PUBKEY","max_silence_s":1800}}
+   - call: {"tool":"kiosk_watch","args":{"mode":"heartbeat"}}
    - when: $.steps.1.success == "false"
    - next: 3
 

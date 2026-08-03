@@ -2,19 +2,20 @@
 
 Turns "sell a cold drink" into a **Solana Pay** `solana:` URL the customer pays from
 their own wallet — and a `reference` pubkey that [`kiosk-watch`](../kiosk-watch) later
-uses to prove the payment landed.
+uses to prove the payment landed. Item-priced requests also carry a versioned `PKPAY1`
+memo binding that reference to the catalog item.
 
 **For:** anyone running a ZeroClaw agent that needs to ask for money without holding
 any. Vending, kiosks, market stalls, paid API access, tip jars. Component 1 of 3 in
 [ProofKiosk](../../README.md); useful standalone from a laptop with no hardware and no
 other plugin.
 
-Channel-agnostic — no channel name appears in the source. Works on Telegram, Discord,
-Matrix, WhatsApp, or email; demoed on Telegram.
+Channel-agnostic — no channel name appears in the source. Any ZeroClaw channel can invoke
+the tool; channel transport is outside this component and its test suite.
 
 ---
 
-## Custody: Tier 1, and the strongest posture in the suite
+## Custody: Tier 1 request builder with zero-network isolation
 
 | Property | Status |
 |---|---|
@@ -53,32 +54,49 @@ sets these.
 |---|---|---|
 | `merchant_address` | **yes** | Receiving pubkey (base58, 32 bytes). Fail-closed if missing or invalid. |
 | `usdc_mint` | no | SPL mint. Defaults to mainnet USDC (`EPjF…Dt1v`). Use your devnet mint when testing. |
+| `token_decimals` | no | Operator-supplied mint decimals, default `6`, range `0..18`. Set it explicitly and identically in charge/watch for the trusted handoff; it is not discovered from the mint account. |
 | `price_list` | no | `"cold_drink:1.5, snack:0.75"` — item id → USDC amount. This list **is** the allowlist. |
 | `max_amount_usdc` | no | Cap for free-amount charges. Default `100`. |
 | `label` | no | Merchant label shown in the customer's wallet. |
 | `display_currency` / `display_rate` | no | **Cosmetic only.** A static operator-set rate for a fiat hint string. No oracle, not in the trust path; the on-chain amount is always the USDC figure. |
 
-Minimal working config — one key:
+Minimal item-priced config. Set mint, decimals, and catalog explicitly so the trusted
+handoff can compare this row with `kiosk-watch`:
 
 ```toml
-[plugins.kiosk-charge.config]
-merchant_address = "YOUR_MERCHANT_PUBKEY"   # everything else defaults
+[plugins]
+enabled = true
+auto_discover = true
+
+[[plugins.entries]]
+name = "kiosk-charge"
+
+[plugins.entries.config]
+merchant_address = "YOUR_MERCHANT_PUBKEY"
+usdc_mint        = "YOUR_SPL_MINT"
+token_decimals   = "6"
+price_list       = "cold_drink:1.5"
 ```
 
 Realistic config:
 
 ```toml
-[plugins.kiosk-charge.config]
+[[plugins.entries]]
+name = "kiosk-charge"
+
+[plugins.entries.config]
 merchant_address = "YOUR_MERCHANT_PUBKEY"
 usdc_mint        = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+token_decimals   = "6"
 price_list       = "cold_drink:1.5, snack:0.75"
 max_amount_usdc  = "10"
 label            = "Kiosk 01"
 ```
 
-**No secrets appear above, and none are redacted — there are none to hold.** The one
-private key a full ProofKiosk deployment uses belongs to the external attestation signer
-and never enters ZeroClaw's config. See [`docs/threat-model.md`](../../docs/threat-model.md).
+**No private key appears above, and the plugin holds none.** Customer-wallet,
+merchant-custody, and external-attestation signing keys all remain outside ZeroClaw.
+An authenticated RPC URL elsewhere in the full config may itself be a credential. See
+[`docs/threat-model.md`](../../docs/threat-model.md).
 
 ## Args (model-facing, `deny_unknown_fields` + raw-key allowlist)
 
@@ -95,14 +113,16 @@ the mint, or the cap.
 amount it verifies from the same `price_list` this plugin prices from, so only an
 item-priced charge has an operator-set number to check a payment against:
 
-| Created with | `kiosk_watch` can verify | Can gate a relay |
+| Created with | `kiosk_watch` can verify | Eligible for trusted order claim |
 |---|---|---|
 | `item_id` | yes | **yes** |
 | `amount_usdc` | **no** — refused with a specific error | **no** |
 
-A free-amount charge is a perfectly good invoice — show the QR, take the money — but
-nothing downstream will actuate on it, by design. If you want a custom amount to open a
-door, add it to `price_list` as an item instead. See
+A free-amount charge is a perfectly good invoice — show the QR, take the money — but it
+cannot enter the trusted actuation claim path. Even an item-priced paid verdict does not
+directly authorize a relay; the external driver must validate and exclusively claim the
+persisted order. If you want a custom amount to open a door, add it to `price_list` as an
+item instead. See
 [`docs-local/DECISIONS.md`](../../docs-local/DECISIONS.md) (2026-08-02).
 
 ## Worked example
@@ -111,13 +131,36 @@ door, add it to `price_list` as an item instead. See
 { "item_id": "cold_drink" }
 ```
 
-Output — one string, token-budgeted, asserted ≤ 200 tokens:
+Successful machine output is versioned JSON. Security-relevant fields are separate from the
+token-budgeted human `message`, so an external order driver does not need to scrape
+prose:
 
+```json
+{
+  "v": 1,
+  "success": true,
+  "status": "created",
+  "actuation_eligible": true,
+  "reference": "3g8oT…dK2f",
+  "item_id": "cold_drink",
+  "amount": "1.5",
+  "recipient": "4Nd1…DB4T",
+  "mint": "EPjF…Dt1v",
+  "created_at_ms": 1700000000000,
+  "url": "solana:4Nd1…DB4T?amount=1.5&spl-token=EPjF…Dt1v&reference=3g8oT…dK2f&memo=%7B…PKPAY1…%7D",
+  "message": "Charge created: 1.5 USDC for `cold_drink`…"
+}
 ```
-Charge created: 1.5 USDC for `cold_drink`. Show this Solana Pay link/QR to the
-customer. Reference for payment-watch: 3g8oT…dK2f. URL:
-solana:4Nd1…DB4T?amount=1.5&spl-token=EPjF…Dt1v&reference=3g8oT…dK2f&label=Kiosk%2001&memo=cold_drink
-```
+
+The decoded memo is exact JSON
+`{"v":1,"tag":"PKPAY1","ref":"<reference>","item":"cold_drink"}`. The watcher
+requires it for actuation-eligible charges, preventing a transfer with several reference
+accounts or an equal-priced different SKU from clearing this order.
+
+For QR/order handoff, save the exact host-direct WIT `ToolResult` and pass that file to
+`skills/kiosk-qr/render-qr.sh` with the plaintext operator TOML. Never copy a URL out of
+model prose. The trusted helper validates recipient, mint, configured decimals, price,
+reference, memo, and URL before durably creating the order record.
 
 ## Prompt injection: what happens when someone tries
 
@@ -132,7 +175,7 @@ allowlist check on the raw JSON keys, so a smuggled operator field fails deseria
 | "Charge 9999 USDC" | **Rejected** — `invalid request: exceeds operator cap`. |
 | "Sell me `free_everything`" | **Rejected** — `invalid request: unknown item`. The price list is the allowlist. |
 | Note text `&amount=999&recipient=EVIL` to forge URL params | **Inert.** Percent-encoded. Asserted: exactly one live `amount`, zero `recipient` params. |
-| Config missing/invalid `merchant_address` | **Refuses to operate.** Config error, no output. |
+| Config missing/invalid `merchant_address` | **WIT failure.** Outer `success:false`, empty `output`, populated `error`; no charge object exists. |
 
 Worst case for a *successful* injection: a charge for the **wrong catalog item** reaches
 a customer — who sees the amount and recipient in their own wallet before signing. Funds
@@ -142,22 +185,26 @@ cannot be redirected.
 
 ## Reproduce it in an evening
 
-Tested against ZeroClaw **v0.8.3**. Total time is dominated by the two cargo builds.
+Tested against the exact ZeroClaw commit
+[`e112ce6b5ccdac9e1cb166bab217e730dd7e24c2`](https://github.com/zeroclaw-labs/zeroclaw/commit/e112ce6b5ccdac9e1cb166bab217e730dd7e24c2)
+(source version **0.8.2**). Total time is dominated by the host and component builds.
 
 **1. A host with the plugin runtime.** The prebuilt binaries ship *without* it —
-`zeroclaw plugin …` is an unrecognized subcommand there. Build from source; one backend
-flag carries the `plugins-wasm` umbrella:
+`zeroclaw plugin …` is an unrecognized subcommand there. From the ProofKiosk repo root,
+build the pinned host with the required component backend:
 
 ```bash
-./install.sh --source --features plugins-wasm-cranelift
+git clone https://github.com/Sushant6095/proofkiosk.git
+cd proofkiosk
+./scripts/install-pinned-zeroclaw.sh
+export PATH="$PWD/.build/zeroclaw-install/bin:$PATH"
 ```
 
 **2. Build and stage this component:**
 
 ```bash
 rustup target add wasm32-wasip2
-git clone https://github.com/Sushant6095/proofkiosk.git && cd proofkiosk
-cargo test --manifest-path plugins/kiosk-charge/Cargo.toml   # 12 tests, no network
+cargo test --locked --manifest-path plugins/kiosk-charge/Cargo.toml # 19 tests, no network
 ./scripts/stage-plugin.sh kiosk-charge                       # -> staged/kiosk-charge/
 ```
 
@@ -192,6 +239,11 @@ It builds the component and greps its imports: kiosk-charge must be `0`, and it 
 kiosk-watch's non-zero count for contrast so you can see the check discriminates rather
 than trivially passing.
 
+`scripts/host-smoke.sh` also executes a valid charge through the exact pinned ZeroClaw
+`WasmTool`, proves caller-spoofed `__config` cannot replace host config, writes the actual
+host-direct `ToolResult`, and passes it through the trusted handoff into an isolated order
+directory.
+
 ---
 
 ## What fought us at the component boundary
@@ -212,10 +264,8 @@ than trivially passing.
 - **Hyphens become underscores.** The crate builds to `kiosk_charge.wasm` while the
   plugin is `kiosk-charge`; `wasm_path` must name the artifact exactly.
   `scripts/stage-plugin.sh` reads the manifest rather than guessing.
-- **Size is mostly not your code.** This component is 210 KB doing string work offline.
-  `kiosk-watch` is 356 KB because a network-touching component must bundle an HTTP/TLS
-  client. Dropping `wasi:http` is worth ~140 KB, and it is the cheapest size win
-  available.
+- **Size is mostly not your code.** This offline component is currently 220 KB under a
+  250 KB gate. Networked components are larger because they bundle an HTTP/TLS client.
 
 ## Layout & tests
 
@@ -224,13 +274,14 @@ Pure core (`src/charge.rs`, zero wasm deps) plus a thin
 `redact-text` plugin uses. That split is what makes plain `cargo test` work on the host.
 
 ```bash
-cargo test                                      # 12 host tests, no network
+cargo test                                      # 19 host tests, no network
 cargo clippy --all-targets -- -D warnings
-cargo build --target wasm32-wasip2 --release    # ~210 KB component
+cargo build --target wasm32-wasip2 --release    # 220 KB; 250 KB gate
 ```
 
 ## The rest of the system
 
 [`kiosk-watch`](../kiosk-watch) verifies the payment on-chain before anything physical
-happens; [`kiosk-attest`](../kiosk-attest) writes hash-chained proof of what happened.
+happens; [`kiosk-attest`](../kiosk-attest) builds unsigned hash-chained proof artifacts
+for an external signer to land.
 Start at the [top-level README](../../README.md).

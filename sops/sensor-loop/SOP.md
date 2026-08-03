@@ -1,6 +1,8 @@
 # Sensor loop
 
-Turn a physical sensor into a tamper-evident on-chain record.
+Specification for turning a physical sensor into a tamper-evident on-chain record.
+It is not a checked-in autonomous runtime: `bme280_read`, the ordinary-step driver,
+and the signer/submission sidecar are external integrations.
 
 ## Flow
 
@@ -33,16 +35,25 @@ memo on-chain: {v, dev, seq, ts, metric, val, prev}  (seq/prev link the chain)
 - The attestation transaction contains **only** the Memo and System (advance-nonce)
   programs. A transfer is not expressible — this is enforced by a structural test in the
   plugin.
-- `admission_policy = "hold"` serializes runs: two overlapping attestations would both
-  read the same chain head and race on `seq`/`prev`.
+- `max_concurrent = 1` limits simultaneous SOP runs, but it is not a durable nonce/chain
+  lock. A production external driver must serialize build → sign → submit → finalized
+  before building the next record. One nonce supports one pending artifact; it is not a
+  queue for several offline messages.
+
+## Runtime boundary
+
+At the exact compatible ZeroClaw pin, deterministic headless execution self-dispatches
+only capability steps. The ordinary `bme280_read` and `kiosk_attest` calls below need an
+external driver. ProofKiosk also does not ship a BME280 adapter or an attestation signer;
+`kiosk_attest` stops at a versioned JSON result containing unsigned message bytes.
 
 ## Notes on the bindings
 
 - `{{steps.1.temp_c}}` pulls the reading out of step 1's output. A string that is
   exactly one binding resolves to the referenced JSON value, so `value` arrives as a
   number, which is what `kiosk_attest` expects.
-- `ts` is deliberately omitted: this runtime has no `$.now` built-in, and
-  `kiosk_attest` defaults `ts` to the current time when the argument is absent.
+- `ts` is deliberately omitted because it is not model-facing. `kiosk_attest` always
+  takes it from the host clock, so the caller cannot backdate or postdate a record.
 - `metric` must be present in the operator's `allowed_metrics` and the value inside its
   configured bounds, or the plugin refuses to attest rather than clamping a bad reading
   into a plausible lie. The key is spelled `allowed_metrics` — an operator who writes

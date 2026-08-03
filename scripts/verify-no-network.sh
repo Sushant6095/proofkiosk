@@ -22,7 +22,7 @@ rustup target list --installed 2>/dev/null | grep -q wasm32-wasip2 \
 
 log "building kiosk-charge for wasm32-wasip2 (release)…"
 ( cd "$ROOT/plugins/kiosk-charge" && CARGO_TARGET_DIR="$TARGET_DIR/charge" \
-    cargo build --target wasm32-wasip2 --release >/dev/null 2>&1 )
+    cargo build --locked --target wasm32-wasip2 --release >/dev/null 2>&1 )
 CHARGE_WASM="$TARGET_DIR/charge/wasm32-wasip2/release/kiosk_charge.wasm"
 [[ -f "$CHARGE_WASM" ]] || die "kiosk_charge.wasm not found at $CHARGE_WASM"
 
@@ -39,7 +39,7 @@ fi
 if [[ -d "$ROOT/plugins/kiosk-watch" ]]; then
   log "building kiosk-watch for contrast…"
   ( cd "$ROOT/plugins/kiosk-watch" && CARGO_TARGET_DIR="$TARGET_DIR/watch" \
-      cargo build --target wasm32-wasip2 --release >/dev/null 2>&1 )
+      cargo build --locked --target wasm32-wasip2 --release >/dev/null 2>&1 )
   WATCH_WASM="$TARGET_DIR/watch/wasm32-wasip2/release/kiosk_watch.wasm"
   if [[ -f "$WATCH_WASM" ]]; then
     WATCH_HTTP="$(strings "$WATCH_WASM" | grep -c 'wasi:http' || true)"

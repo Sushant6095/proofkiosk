@@ -3,128 +3,135 @@
 The core ProofKiosk safety loop: **money must be verified on-chain before anything
 physical happens, and a charge must only be delivered once.**
 
-## Flow
+## Target flow (external driver required)
 
 ```
-cron (every 10s)
+timer / order driver (every 10s)
    │
    ▼
-1. kiosk_watch(reference, item_id, window_s)
+1. kiosk_watch(reference, item_id)
    │        price comes from operator config, keyed by item_id — never from the model
    │        also: returns ALREADY FULFILLED if this charge already has a marker
    │
-   ├── success == false  → 2. HOLD (terminal)  → PENDING / EXPIRED / MISMATCH /
-   │                                             ALREADY FULFILLED / RPC error
+   ├── business success == false → HOLD         → PENDING / MISMATCH /
+   │                                             ALREADY FULFILLED
+   ├── failed WIT result → HOLD                  → config / RPC / decode error
    │                                             → nothing happens, poll again
    │
-   └── success == true   → 3. relay_pulse(pin_ms=400) → 🥤 item dispensed
+   └── paid + raw host-direct result
+                          → validate persisted order + exclusive local claim
+                          → safe relay adapter (target pulse: 400 ms)
                                   │
                                   ▼
                            4. kiosk_attest(kind=fulfillment, reference)
                                   → unsigned PKFUL1 marker → operator signer submits it
-                                  → step 1 returns ALREADY FULFILLED from then on
+                                  → step 1 can return ALREADY FULFILLED while the
+                                    authenticated marker stays in the 10-signature window
 ```
 
-## Why it is safe
+This is the intended contract, not a claim that the checked-in SOP runs the whole loop
+headlessly. At the exact compatible ZeroClaw pin, deterministic headless execution
+self-dispatches only `capability` steps. The ordinary `kiosk_watch` and `kiosk_attest`
+plugin calls below require an external driver, and `relay_pulse` is not a tool shipped by
+this repository.
 
-- Step 1's guard is `when: $.steps.1.success == "true"` with `next: 3`. This runtime
-  routes a **false** guard to the next *linear* step, not past it — which is why step 2
-  exists and is `terminal: true`. A guard that does not hold therefore lands on a step
-  that does nothing and ends the branch; the relay at step 3 is reachable **only** by
-  the explicit `next: 3` jump a true guard takes. Deleting step 2 would make a false
-  guard fall through onto the relay, so it is load-bearing, not filler.
-- `kiosk_watch` sets `success = true` **only** for a transaction that credits the
+## Safety properties in the contract
+
+- Step 1's guard reads `$.steps.1.success` from `kiosk_watch`'s structured JSON output.
+  The plugin emits `true` only for `status="paid"`; every other verdict emits `false`.
+  At the exact pin, a false top-level guard completes rather than taking the guarded
+  `next:` jump, so it cannot fall through into a relay step. Step 2 remains an explicit
+  documentation/driver hold state, not the sole safety barrier.
+- `kiosk_watch` sets inner `success = true` **only** for a transaction that credits the
   **operator-configured price of `item_id`** in the operator's USDC mint to the
   operator's address, referencing this charge, at the configured finality — and only
   when no authenticated fulfillment marker for this charge already exists. Pending,
-  expired, mismatch, already-fulfilled, and **RPC failure** all yield `success = false`.
-- **There is no amount argument.** The price is read from `price_list` in
-  `[plugins.kiosk-watch.config]`, keyed by an item id the caller may choose but never
+  mismatch, and already-fulfilled yield inner `success = false`. Config, RPC,
+  and decode failures instead produce a failed WIT result with empty output. Both forms
+  must hold.
+- **There is no amount argument.** The price is read from the `kiosk-watch`
+  `[[plugins.entries]]` row's `[plugins.entries.config]`, keyed by an item id the caller may choose but never
   write. A compromised model can name the wrong item; it cannot name a wrong price.
-- `deterministic = true` in `SOP.toml` means no LLM round-trip happens between the
-  steps: the relay decision is made by the guard against structured step output, never
-  by model prose.
-- No `requires_confirmation` on the relay step is deliberate: the on-chain verification
-  *is* the confirmation. There is no human in the actuation path, and there does not
-  need to be.
-- The agent holds no key. It cannot move funds; it can only read the chain, pulse a
-  GPIO pin after the chain says paid, and build an unsigned receipt someone else signs.
+- `deterministic = true` means the routing decision itself needs no LLM round-trip. It
+  does **not** provide a driver for ordinary plugin tools or a hardware adapter.
+- A production driver must accept only the raw host-direct result, validate it against
+  the persisted trusted order, create the exclusive host-local claim, and only then call
+  a bounded pulse adapter. Never pass model prose into this boundary.
+- The agent holds no key and does not itself pulse GPIO. The external driver and signer
+  remain separate trust boundaries.
 
-## Step 4 is not optional
+## On-chain marker and local claim
 
 A verified payment stays verified forever. Without a fulfillment marker, every
-subsequent cron tick re-verifies the same charge and pulses the relay again — the
+subsequent driver poll can re-verify the same charge and pulse the relay again — the
 plugin is stateless by construction (fresh WASI store per call, no statics), so it
 cannot remember that it already dispensed. Single-use is enforced by reading the
 marker back off the chain, which means **the marker has to actually get written.**
 
-Step 4 emits an *unsigned* transaction. It is delivered only once your operator signer
+Step 4 emits an *unsigned* transaction. It is meaningful only once your operator signer
 signs and submits it, so:
 
-- **Automate the signer.** A co-located signing daemon lands the marker in a second or
-  two — one or two cron ticks. A human in that path leaves the window open indefinitely.
-- **Between the relay pulse and the marker confirming, `kiosk_watch` still says PAID.**
-  That is deliberate: the loop is **at-least-once**. See below.
+- **Automate and constrain the signer.** A signer sidecar should independently decode the
+  artifact, enforce Memo + System-only policy, submit it, and wait for `finalized`. That
+  sidecar is not implemented in this repo; a human leaves the replay window open.
+- **The reference scan is bounded.** More than ten newer writes can hide the marker, so
+  the on-chain marker cannot be the only physical replay guard. The local exclusive
+  claim remains mandatory.
 
-## At-least-once, and when that is the wrong choice
+## At-most-once claim is not exactly-once delivery
 
-Ordering is relay-then-marker. If the marker write fails, the charge can be delivered
-again on a later tick. The alternative — marker first, relay second — trades that for
-the opposite failure: a customer who paid gets nothing because the signer was down.
+`trusted-charge-handoff.mjs` durably creates the order from a raw host-direct charge
+result. `trusted-order-claim.mjs` validates a raw host-direct paid result against that
+order and uses exclusive creation so a second claim fails. This closes duplicate action
+on one correctly integrated host.
 
-For the actuators this loop targets, re-firing is harmless:
-
-| Actuator | Re-fire means | Verdict |
-|---|---|---|
-| Door / locker latch | it unlocks again | harmless |
-| EV charger enable | it re-enables an already-enabled session | harmless |
-| Turnstile, gate | opens again for the same buyer | harmless |
-| **Vending / consumable dispenser** | **a second drink drops, unpaid** | **not acceptable** |
-
-**A consumable dispenser needs at-most-once and this loop does not provide it.** Do not
-wire this SOP to one without changing the ordering to marker-first plus an operator
-retry path for the "paid but not delivered" case. That policy is not implemented here;
-saying so is more useful than a config flag that pretends the trade-off went away.
+It does not solve the other side of the crash window: if the driver claims and then dies
+before pulsing, the customer is paid but undelivered. A physical system still needs a
+claimed → actuating → delivered journal, delivery sensor, and explicit recovery/operator
+policy. None of that driver/hardware code is shipped.
 
 ## Adapting it
 
-- `reference` / `item_id` come from the preceding `kiosk_charge` call for this sale. In
-  a full deployment the charge step writes them into the run context and step 1 reads
-  them with a `{{steps.N.field}}` binding instead of the literals below.
+- `reference` / `item_id` must come from the trusted order persisted from the preceding
+  raw host-direct `kiosk_charge` call. The helpers are shipped; the checked-in SOP still
+  contains literals because no headless external driver binds the record into the steps.
 - `item_id` must exist in **both** `price_list` blocks. `scripts/check-config.sh`
   verifies the two agree, along with `device_authority == nonce_authority` — get that
-  second one wrong and no marker ever authenticates, so single-use silently stops
-  working.
+  second one wrong and no marker ever authenticates, so the on-chain replay barrier
+  stops working. The local exclusive claim remains mandatory either way.
 - `finality` is already `finalized` and cannot be lowered for a payment verdict — the
   weaker commitments are refused rather than configurable. Budget ~13 s from payment to
   verdict; that is the cost of not dispensing against a transaction that can be rolled
   back.
-- `pin_ms` and the relay tool name depend on your hardware wiring (see the Pi build:
-  `--features hardware,peripheral-rpi`, and `hardware/wiring.md`).
+- `pin_ms` and the relay adapter depend on your hardware wiring. The pinned host exposes
+  lower-level GPIO support when built with `hardware,peripheral-rpi`, but ProofKiosk does
+  not currently implement the named `relay_pulse` tool, enforced maximum duration,
+  startup-low behavior, or delivery sensor (see `hardware/wiring.md`).
 
-## Known gap — read before deploying this loop
+## Known gaps — read before integrating this loop
 
-`zeroclaw sop validate` passes on this file, and the *routing* above is verified against
-the runtime's `resolve_next` (a false top-level `when` guard bypasses `next:` and takes
-the linear successor — `sop/route/mod.rs`, test `when_false_advances_to_linear_successor`).
+`zeroclaw sop validate` passes, and the former guard-data gap is closed:
+`kiosk_watch` emits a complete JSON object containing `success` and `status`, which the
+routing payload can parse. The remaining gaps are larger than a predicate typo:
 
-What is **not** yet wired is the guard's left-hand side. The routing payload is built
-from each step's `SopStepResult.output`, which is a **string** (parsed as JSON only if
-the whole string happens to parse). `kiosk_watch` returns its verdict as the separate
-`ToolResult.success` boolean and puts human-readable prose in `output`, so
-`$.steps.1.success` does not resolve today. Condition evaluation is fail-closed on an
-unresolved path, so the effect is the safe one — the run lands on step 2 and the relay
-stays shut — but it means **this loop will not dispense as written**. It is a correct,
-validated skeleton, not a live actuation path.
+1. **No headless plugin dispatcher.** At commit
+   `e112ce6b5ccdac9e1cb166bab217e730dd7e24c2`, deterministic headless runs execute
+   `capability` steps themselves; ordinary plugin/tool steps report that an external
+   driver is required. A cron declaration therefore does not poll this plugin by itself.
+2. **No shipped orchestration/recovery driver.** Trusted persistence and one exclusive
+   host-local claim exist, but `REFERENCE_FROM_KIOSK_CHARGE` and `cold_drink` remain SOP
+   literals. No checked-in driver captures the raw host-direct paid result, claims the
+   order, invokes the actuator, journals physical state, and recovers after a crash.
+3. **No pulse adapter.** `relay_pulse` is a desired narrow tool contract, not an
+   installed tool in this repo or in the pinned host.
+4. **No signer/submission/finality loop.** Step 4 produces unsigned message bytes only.
+5. **Not exactly-once physical delivery.** Exclusive claim prevents a second claim on one
+   host, but a crash after claim can leave the item undelivered; no delivery sensor or
+   recovery policy exists.
 
-Closing it needs one of:
-
-- a machine-readable verdict in `kiosk_watch`'s `output` (a JSON object the step's
-  `output:` contract can validate), which is a plugin-output change, or
-- a host change that surfaces `ToolResult.success` into the routing payload.
-
-Either way the guard direction stays the same: the relay is reachable only from an
-affirmative verdict. Until then, treat rung 3 as demo-wired, not production-wired.
+Use this SOP as a reviewable orchestration specification. For a real demo, drive the
+plugin calls explicitly and show the structured outputs; do not claim the cron trigger
+or physical delivery is autonomous until those five integration gaps are closed.
 
 ## Steps
 
@@ -132,25 +139,29 @@ affirmative verdict. Until then, treat rung 3 as demo-wired, not production-wire
    whether this charge was already delivered.
    - tools: kiosk_watch
    - allow-tools: kiosk_watch
-   - call: {"tool":"kiosk_watch","args":{"reference":"REFERENCE_FROM_KIOSK_CHARGE","item_id":"cold_drink","window_s":300}}
+   - call: {"tool":"kiosk_watch","args":{"reference":"REFERENCE_FROM_KIOSK_CHARGE","item_id":"cold_drink"}}
    - when: $.steps.1.success == "true"
    - next: 3
 
-2. **Hold — do not deliver** — Reached whenever the guard on step 1 does not hold
-   (pending, expired, mismatch, already fulfilled, or RPC failure). Ends the branch so
-   the relay is never reached by fallthrough; the next cron tick polls again.
+2. **Hold — do not deliver** — Explicit state for an external driver whenever the
+   verdict is pending, mismatch, already fulfilled, or an RPC failure. The exact
+   pinned top-level false guard completes before this step, so production code must not
+   rely on this prose step for polling behavior.
    - deny-tools: relay_pulse
    - terminal: true
 
-3. **Dispense** — Pulse the delivery relay. Reachable only from step 1's true guard.
-   Falls through to step 4, which is what makes the delivery single-use.
+3. **Claim then dispense (desired driver + adapter)** — Before this step, the external
+   driver must validate the raw host-direct paid result and successfully run
+   `trusted-order-claim.mjs`. Only then may it pulse the relay. `relay_pulse` is not
+   shipped; an integration must implement its bounds and fail-safe behavior.
    - tools: relay_pulse
    - allow-tools: relay_pulse
    - call: {"tool":"relay_pulse","args":{"pin_ms":400}}
 
 4. **Record the fulfillment** — Build the unsigned PKFUL1 marker naming this charge.
-   Once the operator signer submits it, step 1 returns ALREADY FULFILLED for this
-   reference and the relay cannot fire for it again.
+   Once the operator signer submits it, step 1 can return ALREADY FULFILLED while the
+   authenticated marker remains inside the bounded scan. The local exclusive claim is
+   still the physical replay barrier.
    - tools: kiosk_attest
    - allow-tools: kiosk_attest
    - call: {"tool":"kiosk_attest","args":{"kind":"fulfillment","reference":"REFERENCE_FROM_KIOSK_CHARGE","item":"cold_drink"}}
