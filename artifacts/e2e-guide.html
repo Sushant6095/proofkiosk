@@ -1,0 +1,428 @@
+<title>ProofKiosk — End-to-End Test & Demo Guide</title>
+<style>
+  :root{
+    --paper:#fbfaf7; --ink:#16171a; --ink-2:#4a4d55; --rule:#ddd8cd;
+    --sig:#a8341f;            /* signal red — used only for danger/claims */
+    --ok:#1f6b4a;             /* verified */
+    --warn:#8a6d18;           /* caution */
+    --term-bg:#1c1e22; --term-fg:#e8e6e1; --term-dim:#8c9099;
+    --mono:"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);
+       font-size:10.5pt;line-height:1.55;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .page{max-width:186mm;margin:0 auto;padding:0 2mm}
+  h1,h2,h3{font-family:var(--serif);font-weight:600;letter-spacing:-.015em;margin:0}
+  h2{font-size:17pt;margin:26px 0 4px;padding-bottom:5px;border-bottom:2.5px solid var(--ink)}
+  h3{font-size:12pt;margin:16px 0 5px;color:var(--ink)}
+  h2 .n{font-family:var(--mono);font-size:10pt;color:var(--sig);margin-right:9px;letter-spacing:0}
+  p{margin:6px 0}
+  ul,ol{margin:6px 0;padding-left:19px}
+  li{margin:3px 0}
+  code{font-family:var(--mono);font-size:9pt;background:#efece4;padding:1px 4px;border-radius:3px}
+  strong{font-weight:650}
+  .sub{color:var(--ink-2)}
+
+  /* cover */
+  .cover{padding:16mm 0 8mm;border-bottom:3px solid var(--ink);margin-bottom:14px}
+  .cover h1{font-size:31pt;line-height:1.04;letter-spacing:-.03em}
+  .cover .tag{font-family:var(--mono);font-size:8.5pt;text-transform:uppercase;
+    letter-spacing:.14em;color:var(--sig);margin-bottom:9px}
+  .cover .meta{font-family:var(--mono);font-size:8.5pt;color:var(--ink-2);margin-top:12px;
+    display:flex;gap:20px;flex-wrap:wrap}
+
+  /* terminal blocks */
+  .cmd{background:var(--term-bg);color:var(--term-fg);border-radius:6px;padding:9px 12px;
+       font-family:var(--mono);font-size:8.6pt;line-height:1.5;margin:7px 0;overflow-x:auto;
+       white-space:pre-wrap;word-break:break-word;page-break-inside:avoid}
+  .cmd .c{color:var(--term-dim)}
+  .does{font-size:9pt;color:var(--ink-2);margin:-3px 0 10px;padding-left:11px;
+        border-left:2.5px solid var(--rule)}
+  .does b{color:var(--ink);font-weight:600}
+
+  /* callouts */
+  .box{border:1.5px solid var(--rule);border-left-width:5px;border-radius:4px;
+       padding:9px 13px;margin:11px 0;page-break-inside:avoid;background:#fff}
+  .box .lbl{font-family:var(--mono);font-size:7.6pt;text-transform:uppercase;
+       letter-spacing:.11em;font-weight:700;display:block;margin-bottom:3px}
+  .danger{border-left-color:var(--sig)} .danger .lbl{color:var(--sig)}
+  .good{border-left-color:var(--ok)} .good .lbl{color:var(--ok)}
+  .note{border-left-color:var(--warn)} .note .lbl{color:var(--warn)}
+
+  /* tables */
+  /* Break long tables at ROW boundaries, not as one atomic block — a 13-row
+     table with page-break-inside:avoid gets shunted whole onto the next page
+     and leaves a blank one behind it. */
+  table{width:100%;border-collapse:collapse;margin:9px 0;font-size:9pt;page-break-inside:auto}
+  thead{display:table-header-group}
+  tr{page-break-inside:avoid}
+  th{text-align:left;font-family:var(--mono);font-size:7.8pt;text-transform:uppercase;
+     letter-spacing:.07em;border-bottom:2px solid var(--ink);padding:5px 7px 4px;vertical-align:bottom}
+  td{padding:5px 7px;border-bottom:1px solid var(--rule);vertical-align:top}
+  tr:nth-child(even) td{background:#f5f2eb}
+  td code{font-size:8.3pt;background:none;padding:0}
+
+  .pill{display:inline-block;font-family:var(--mono);font-size:7.4pt;font-weight:700;
+    text-transform:uppercase;letter-spacing:.07em;padding:1.5px 6px;border-radius:9px;
+    vertical-align:2px;margin-right:5px}
+  .cam{background:var(--sig);color:#fff}
+  .yes{background:var(--ok);color:#fff}
+  .no{background:#e6e2d8;color:var(--ink-2)}
+
+  /* script table */
+  .script td:first-child{font-family:var(--mono);font-size:8.2pt;white-space:nowrap;color:var(--sig);font-weight:700}
+  .script td:nth-child(2){width:44%}
+  .say{font-style:italic}
+
+  .ascii{font-family:var(--mono);font-size:8pt;line-height:1.35;background:#fff;
+    border:1.5px solid var(--rule);border-radius:5px;padding:11px;margin:9px 0;
+    white-space:pre;overflow-x:auto;page-break-inside:avoid}
+
+  .brk{page-break-before:always}
+  @page{size:A4;margin:13mm 12mm 14mm}
+  @media print{.cover{padding-top:4mm}}
+</style>
+
+<div class="page">
+
+<div class="cover">
+  <div class="tag">Operator Runbook · Demo Production Kit</div>
+  <h1>ProofKiosk<br>End-to-End Test &amp; Demo Guide</h1>
+  <div class="meta">
+    <span>REPO @ 7da49b4</span><span>ZEROCLAW PIN e112ce6b (0.8.2)</span><span>2026-08-03</span>
+  </div>
+</div>
+
+<div class="box danger">
+  <span class="lbl">Read this before you record anything</span>
+  Three things in this system <b>work end to end</b>: the charge → QR → real finalized on-chain
+  payment → verified <code>paid</code> verdict rail; the injection/negative drills; and the
+  225-test suite. Three things <b>do not</b>: no relay has ever been energized by this code, no
+  attestation has ever been signed or landed on chain, and the SOP loop cannot self-execute.
+  Every command and every spoken line in this guide is built only from the first group. Claiming
+  the second group on camera is the single fastest way to lose credibility on an otherwise strong
+  submission.
+</div>
+
+<h2><span class="n">01</span>Where the plugins actually run</h2>
+
+<p>Short answer to the question you asked: <b>the plugins run inside the ZeroClaw host process,
+not separately — and you should not use the desktop dashboard for the demo.</b></p>
+
+<div class="ascii">  YOUR TERMINAL                 ZEROCLAW HOST PROCESS (one binary)
+  ─────────────                 ────────────────────────────────────────
+                                ┌──────────────────────────────────────┐
+  zc agent ────────────────────►│  agent loop  ──► LLM (reformats!)    │
+                                │        │                             │
+  exact-host-runtime-smoke.sh ─►│    WasmTool runtime (wasmtime)       │
+                                │        │                             │
+                                │   ┌────▼─────┬──────────┬─────────┐  │
+                                │   │ charge   │ watch    │ attest  │  │  ← .wasm components,
+                                │   │ .wasm    │ .wasm    │ .wasm   │  │    fresh store per call
+                                │   └──────────┴────┬─────┴────┬────┘  │
+                                └────────────────────┼──────────┼──────┘
+                                                     ▼          ▼
+                                              Solana RPC   unsigned tx
+                                                            (nobody signs it)</div>
+
+<table>
+<tr><th>Question</th><th>Answer</th></tr>
+<tr><td>Separate processes / servers per plugin?</td><td><b>No.</b> Three <code>.wasm</code> components loaded by the one <code>zeroclaw</code> binary. Nothing to start, nothing listening on a port.</td></tr>
+<tr><td>Inside the <code>zeroclaw desktop</code> dashboard?</td><td><b>No — and don't.</b> The companion app exists (<code>zeroclaw desktop</code>, menu-bar + dashboard) but adds nothing here and puts a UI between you and the evidence.</td></tr>
+<tr><td>So what do I drive on camera?</td><td>The <b>CLI</b>. Two entry points, and the difference matters (below).</td></tr>
+<tr><td>Do plugins keep state between calls?</td><td><b>No.</b> The host builds a fresh WASI store per <code>execute</code>. A <code>static</code> counter silently resets — which is exactly why single-use delivery is read back off the chain.</td></tr>
+</table>
+
+<div class="box note">
+  <span class="lbl">The one distinction that decides your evidence quality</span>
+  <b><code>zc agent --message "..."</code></b> routes through the LLM. Good for showing the
+  <i>product</i> — a human asks, the agent calls a tool. But the model can reformat tool output,
+  so it is <b>presentation evidence, never trusted input.</b><br>
+  <b><code>./scripts/exact-host-runtime-smoke.sh</code></b> executes the component through the real
+  pinned <code>WasmTool</code> and writes the raw WIT <code>ToolResult</code> to disk. <b>That file
+  is the security boundary.</b> Use it for anything you assert as proof.
+</div>
+
+<h2><span class="n">02</span>Pre-flight — five commands</h2>
+
+<div class="cmd">cd /Users/vyapar/Downloads/proofkiosk
+rustc --version      <span class="c"># expect 1.97.1</span>
+solana --version     <span class="c"># expect 4.1.1</span>
+spl-token --version  <span class="c"># expect 5.6.1</span>
+node --version       <span class="c"># expect v24.10.0</span>
+zeroclaw plugin --help</div>
+<div class="does"><b>The last one is the gate.</b> On the stock <code>zeroclaw 0.8.3</code> on your
+PATH it prints <code>unrecognized subcommand 'plugin'</code> — that binary has no WASM plugin
+runtime and will never load ProofKiosk. Phase 1 fixes it. Do not proceed past that error.</div>
+
+<h2><span class="n">03</span>Phase 1 — build the plugin-capable pinned host</h2>
+
+<div class="cmd">export PROOFKIOSK_ROOT="$PWD"
+export ZEROCLAW_SRC="$PROOFKIOSK_ROOT/.build/zeroclaw-e112ce6b5ccd"
+export ZC_CONFIG_DIR="$PROOFKIOSK_ROOT/.devnet/zeroclaw-config"
+export ZC_AGENT="proofkiosk"
+mkdir -p "$PROOFKIOSK_ROOT/.devnet" "$ZC_CONFIG_DIR"
+zc() { zeroclaw --config-dir "$ZC_CONFIG_DIR" "$@"; }
+
+./scripts/install-pinned-zeroclaw.sh
+export PATH="$PROOFKIOSK_ROOT/.build/zeroclaw-install/bin:$PATH"
+hash -r && zeroclaw --version && zeroclaw plugin --help</div>
+<div class="does">Checks out <b>exact commit e112ce6b</b> (identifies as 0.8.2), builds with
+<code>--locked</code> + <code>plugins-wasm-cranelift</code>, and proves the result exposes
+<code>plugin</code>. The <code>zc()</code> function pins every later command to an isolated,
+gitignored config dir so you never touch your real <code>~/.zeroclaw</code>. <b>~10 min of cargo.</b></div>
+
+<h2><span class="n">04</span>Phase 2 — prove the code before you show it</h2>
+
+<div class="cmd">for d in crates/kiosk-core plugins/kiosk-{charge,watch,attest}; do (cd $d &amp;&amp; cargo test); done
+npm ci &amp;&amp; npm test
+cargo clippy --all-targets -- -D warnings
+./scripts/verify-no-network.sh
+./scripts/wasm-size.sh
+./scripts/stage-plugin.sh
+./scripts/host-smoke.sh</div>
+<table>
+<tr><th>Command</th><th>What it proves</th></tr>
+<tr><td><code>cargo test</code> ×4</td><td>213 Rust tests (core 80 / charge 19 / watch 76 / attest 38). No network in any of them.</td></tr>
+<tr><td><code>npm test</code></td><td>12 Node trusted-boundary tests — order persistence, immutable economics, exclusive claim. <b>225 total.</b></td></tr>
+<tr><td><code>verify-no-network.sh</code></td><td><span class="pill cam">camera</span><code>kiosk-charge</code> imports <b>0</b> <code>wasi:http</code>; prints watch's non-zero count as the control, so the check is shown to discriminate.</td></tr>
+<tr><td><code>wasm-size.sh</code></td><td>charge 220/250 KB · watch 390/400 KB · attest 418/450 KB.</td></tr>
+<tr><td><code>stage-plugin.sh</code></td><td>Assembles <code>staged/&lt;name&gt;/</code> = manifest + the <code>.wasm</code> named exactly as <code>wasm_path</code>.</td></tr>
+<tr><td><code>host-smoke.sh</code></td><td>Installs and loads all three into the pinned host and runs the exact-host runtime test against deterministic local RPC fixtures.</td></tr>
+</table>
+
+<h2><span class="n">05</span>Phase 3 — isolated agent, then install the plugins</h2>
+
+<div class="cmd">zc quickstart --agent "$ZC_AGENT"   <span class="c"># interactive: pick provider, paste key at the masked prompt</span>
+zc self-test --quick
+
+zc plugin install "$PROOFKIOSK_ROOT/staged/kiosk-charge"
+zc plugin install "$PROOFKIOSK_ROOT/staged/kiosk-watch"
+zc plugin install "$PROOFKIOSK_ROOT/staged/kiosk-attest"
+zc config set plugins.enabled true
+zc config set plugins.auto_discover true
+zc plugin list --all
+zc config list --filter plugins.entries</div>
+<div class="does">The last command <b>must</b> show all three names. If one is missing it was skipped at
+discovery — the startup log names why (malformed manifest, missing <code>wasm_path</code> file, or
+signature policy). <b>Never hand-write a <code>[plugins.entries]</code> block</b>: it is a TOML
+array, and one syntax slip disables the entire plugin section and makes later
+<code>config set</code> fail with <code>Unknown property</code>.</div>
+
+<h2><span class="n">06</span>Phase 4 — build the test environment</h2>
+
+<div class="cmd">( set -o pipefail
+  MODE=localnet MINT_AMOUNT=1000 ./scripts/devnet-setup.sh \
+    | tee "$PROOFKIOSK_ROOT/.devnet/setup-localnet.txt" )
+
+source "$PROOFKIOSK_ROOT/.devnet/payment.env"
+./scripts/check-config.sh "$PROOFKIOSK_CONFIG"
+spl-token balance "$PROOFKIOSK_MINT" --owner "$PROOFKIOSK_MERCHANT" --url "$PROOFKIOSK_RPC_URL"  <span class="c"># 0</span></div>
+<div class="does">Creates <b>separate merchant and customer</b> wallets, funds both, creates both token
+accounts, mints the fake 6-decimal token <b>only to the customer</b>, creates the durable nonce
+account, and writes a validated <code>.devnet/zeroclaw.toml</code>. It passes <code>--url</code> on
+every call and never mutates your global Solana config. <code>check-config.sh</code> catches the two
+silent killers: <code>device_authority ≠ nonce_authority</code> (markers never authenticate →
+single-use quietly dies) and drifted <code>price_list</code> (real payments read as mismatches).
+<br><b>Run localnet first.</b> Only switch <code>MODE=devnet</code> once this is green.</div>
+
+<div class="box note"><span class="lbl">Rate limits will bite you on camera</span>
+Public Devnet RPC is throttled and the faucet allows ~2 anonymous requests / 8 h (sign in with
+GitHub to raise it). An RPC <code>429</code> is <b>not</b> a payment result — verify the address in
+Explorer and retry. Do the funding well before you hit record.</div>
+
+<h2 class="brk"><span class="n">07</span>Phase 5 — the end-to-end run</h2>
+
+<h3>5.1 · Charge — through the real host, not the chat</h3>
+<div class="cmd">export CHARGE_TOOL_RESULT="$PROOFKIOSK_ROOT/.devnet/charge-tool-result.json"
+ZEROCLAW_SOURCE_DIR="$ZEROCLAW_SRC" PROOFKIOSK_HOST_OUTPUT="$CHARGE_TOOL_RESULT" \
+  ./scripts/exact-host-runtime-smoke.sh
+test -s "$CHARGE_TOOL_RESULT"</div>
+<div class="does">Writes the raw WIT <code>ToolResult</code>. <code>output</code> is a string containing
+the versioned charge object (<code>{"v":1,...,"status":"created"}</code>). It refuses to overwrite a
+prior result — that is deliberate, so you cannot silently regenerate evidence.</div>
+
+<div class="cmd">export PAY_URL="$(node scripts/trusted-charge-handoff.mjs \
+  --input "$CHARGE_TOOL_RESULT" --config "$PROOFKIOSK_CONFIG" \
+  --orders-dir "$PROOFKIOSK_ROOT/.proofkiosk/orders" --url-only)"
+export REFERENCE="$(node -e 'console.log(new URL(process.argv[1]).searchParams.get("reference"))' "$PAY_URL")"
+test -f "$PROOFKIOSK_ROOT/.proofkiosk/orders/$REFERENCE.json"</div>
+<div class="does">Re-validates the raw result against the plaintext operator config and persists a
+durable order record with <b>immutable quote economics and quote time</b>. This is what later
+rejects a payment that lands after expiry, or a catalog edited after the quote.</div>
+
+<div class="cmd">./skills/kiosk-qr/render-qr.sh "$CHARGE_TOOL_RESULT" "$PROOFKIOSK_CONFIG" \
+  "$PROOFKIOSK_ROOT/.devnet/payment.png"
+open "$PROOFKIOSK_ROOT/.devnet/payment.png"</div>
+<div class="does"><span class="pill cam">camera</span>The renderer repeats the trusted validation —
+it will <b>not</b> accept an arbitrary <code>solana:</code> URL. The QR can only come from a real
+host result.</div>
+
+<h3>5.2 · Watch before payment</h3>
+<div class="cmd">zc agent --agent "$ZC_AGENT" --temperature 0 \
+  --message "Call kiosk_watch exactly once with {\"reference\":\"$REFERENCE\",\"item_id\":\"$ITEM_ID\"}. Return the complete raw tool output unchanged."</div>
+<div class="does"><span class="pill cam">camera</span>Expect <code>status:"pending"</code>,
+<code>success:false</code>. If you get <code>mismatch</code>, something already touched that public
+reference — generate a fresh charge.</div>
+
+<h3>5.3 · Pay — real, finalized, independently validated</h3>
+<div class="cmd">( set -o pipefail; npm run devnet:pay | tee .devnet/payment-submit.txt )
+export PAYMENT_SIG="$(awk '/^submitted / {print $2; exit}' .devnet/payment-submit.txt)"
+grep -F "finalized and validated $PAYMENT_SIG" .devnet/payment-submit.txt</div>
+<div class="does"><span class="pill cam">camera</span>Builds a reference-bearing SPL transfer with the
+<b>official Solana Pay package</b>, preserves the charge's <code>PKPAY1</code> memo binding
+reference+item, submits from the <b>separate customer</b> key, waits for <b>finalized</b>, then calls
+<code>validateTransfer</code> over recipient/mint/amount/reference. Known-good localnet run:
+merchant <code>0 → 1.5</code>, customer <code>1000 → 998.5</code>.</div>
+
+<h3>5.4 · Watch after payment — the money shot</h3>
+<div class="cmd">spl-token balance "$MINT" --owner "$MERCHANT" --url "$RPC_URL"   <span class="c"># now 1.5</span>
+zc agent --agent "$ZC_AGENT" --temperature 0 \
+  --message "Call kiosk_watch exactly once with {\"reference\":\"$REFERENCE\",\"item_id\":\"$ITEM_ID\"}. Return the complete raw tool output unchanged."</div>
+<div class="does"><span class="pill cam">camera</span><code>status:"paid"</code>,
+<code>success:true</code>. Verified at <b>finalized</b> commitment against the operator's merchant,
+mint, price, and the <code>PKPAY1</code> memo — <b>with no amount argument anywhere in the call.</b></div>
+
+<h3>5.5 · Attest — stops exactly where it should</h3>
+<div class="cmd">zc agent --agent "$ZC_AGENT" --temperature 0 \
+  --message 'Call kiosk_attest exactly once with {"kind":"reading","metric":"temp_c","value":4.2}. Return the complete raw tool output unchanged.'</div>
+<div class="does"><span class="pill cam">camera</span>Returns <code>signature_required</code> plus
+unsigned message bytes. <b>This is the correct, honest ending</b> — the plugin builds a
+Memo+System-only durable-nonce transaction and hands it to an external signer that this repo
+deliberately does not ship.</div>
+
+<h3>5.6 · Heartbeat &amp; SOP validation</h3>
+<div class="cmd">zc agent --agent "$ZC_AGENT" --temperature 0 \
+  --message 'Call kiosk_watch exactly once with {"mode":"heartbeat"}. Return the complete raw tool output unchanged.'
+
+zc config set sop.sops_dir "$PROOFKIOSK_ROOT/sops"
+zc sop validate
+zc sop graph proofkiosk-payment-loop --format outline</div>
+<div class="does">Heartbeat target/authority/threshold are all operator config, never arguments; a
+fresh deployment correctly returns <code>missing</code> until an authenticated attestation lands.
+<code>sop validate</code> proves <b>syntax only</b> — say so out loud if you show it.</div>
+
+<h2><span class="n">08</span>Phase 6 — the negative tests (your strongest footage)</h2>
+
+<table>
+<tr><th>Type this at the agent</th><th>What must happen</th></tr>
+<tr><td>charge <code>{"item_id":"free_everything"}</code></td><td>Rejected — the price list <i>is</i> the allowlist</td></tr>
+<tr><td>charge <code>{"amount_usdc":"9999"}</code></td><td>Rejected — operator cap</td></tr>
+<tr><td>charge with extra <code>{"recipient":"..."}</code></td><td>Unknown field rejected <b>before any logic runs</b></td></tr>
+<tr><td><code>note</code> = <code>&amp;amount=0&amp;recipient=EVIL</code></td><td>Percent-encoded, inert — not live query fields</td></tr>
+<tr><td>watch with <code>{"expected_amount":"0.001"}</code></td><td>Unknown field rejected — <b>there is no amount argument</b></td></tr>
+<tr><td>Underpay the catalog price</td><td><code>mismatch</code>, never paid</td></tr>
+<tr><td>Reuse the reference under an equal-priced item</td><td><code>mismatch</code> — the <code>PKPAY1</code> memo binds the original item</td></tr>
+<tr><td>attest <code>{"metric":"temp_c","value":999}</code></td><td>Rejected — refused, never clamped into a plausible lie</td></tr>
+<tr><td>Point <code>rpc_url</code> at a dead endpoint</td><td><code>success:false</code>, empty output, populated error. <b>Restore immediately.</b></td></tr>
+</table>
+
+<div class="cmd">cargo test --manifest-path plugins/kiosk-charge/Cargo.toml injection_note_cannot_forge_url_params
+cargo test --manifest-path plugins/kiosk-watch/Cargo.toml malformed_get_transaction_is_err_never_paid
+cargo test --manifest-path plugins/kiosk-attest/Cargo.toml tx_contains_only_memo_and_system_programs</div>
+<div class="does">Each drill above is also a host test. Running one named test on camera is far more
+convincing than a green summary line, because the name states the claim.</div>
+
+<h2 class="brk"><span class="n">09</span>Hardware — inspection only</h2>
+
+<div class="box danger"><span class="lbl">Do not energize a load in this video</span>
+There is no checked-in <code>relay_pulse</code>, no defined active-high/active-low polarity, no
+hardware one-shot, and <code>hardware/wiring.md</code> still contains an isolation vs common-ground
+contradiction. Show the board and the pin map; do not connect a solenoid or motor. If you want
+motion on screen, drive a <b>current-limited LED</b> through a reviewed driver — and say plainly
+that it is a bench indicator, not the product.</div>
+
+<table>
+<tr><th>Signal</th><th>Pi pin</th><th>BCM</th><th>Goes to</th></tr>
+<tr><td>Relay VCC</td><td>2</td><td>—</td><td>5 V</td></tr>
+<tr><td>Relay IN</td><td>11</td><td>GPIO17</td><td>Relay control input</td></tr>
+<tr><td>Relay GND</td><td>6</td><td>—</td><td>Ground</td></tr>
+<tr><td>BME280 VIN</td><td>1</td><td>—</td><td><b>3.3 V — not 5 V</b></td></tr>
+<tr><td>BME280 SDA / SCL</td><td>3 / 5</td><td>GPIO2 / GPIO3</td><td>I²C</td></tr>
+</table>
+
+<div class="cmd">zc hardware discover     <span class="c"># laptop build: reports hardware unavailable — expected</span>
+zc peripheral list
+sudo apt-get install -y i2c-tools &amp;&amp; i2cdetect -y 1   <span class="c"># on the Pi: BME280 at 0x76 or 0x77</span></div>
+<div class="does">The Pi feature build is
+<code>ZEROCLAW_FEATURES=plugins-wasm-cranelift,hardware,peripheral-rpi ./scripts/install-pinned-zeroclaw.sh</code>
+— and even that <b>does not</b> create ProofKiosk's missing <code>relay_pulse</code> /
+<code>bme280_read</code> tools.</div>
+
+<h2><span class="n">10</span>Sites to open — exactly six tabs</h2>
+
+<table>
+<tr><th>#</th><th>Tab</th><th>When &amp; why</th></tr>
+<tr><td>1</td><td><b>Solana Explorer (Devnet)</b><br><code>explorer.solana.com/?cluster=devnet</code></td><td>Twice: the merchant address before/after, and the payment signature. <b>Verify <code>cluster=devnet</code> is visible in the URL bar</b> — that single detail answers "is this real money?"</td></tr>
+<tr><td>2</td><td><b>Your GitHub repo</b></td><td>Opening shot. README status table — the honest shipped-vs-roadmap split.</td></tr>
+<tr><td>3</td><td><b>Solana Pay SPEC</b><br><code>github.com/solana-foundation/pay</code></td><td>3 seconds while saying "standard <code>solana:</code> transfer request" — proves you didn't invent a format.</td></tr>
+<tr><td>4</td><td><b>Pinned ZeroClaw source</b><br><code>.../tree/e112ce6b5ccd...</code></td><td>While saying "built against this exact commit." Kills the "which version?" question.</td></tr>
+<tr><td>5</td><td><b>proofkiosk.vercel.app</b></td><td>Optional closer. <b>Say the word "illustration"</b> — it is a scripted explainer, not a live system.</td></tr>
+<tr><td>6</td><td><b>Phantom (Devnet)</b></td><td>Only if you do the wallet path. Testnet banner must stay visible on screen.</td></tr>
+</table>
+
+<div class="box note"><span class="lbl">Do not open</span>
+Mainnet explorer · a real wallet · your model API key · the Telegram bot token · any authenticated
+RPC URL. Scrub <code>.devnet/</code> paths from the frame if they show key filenames.</div>
+
+<h2><span class="n">11</span>Speaking script — 7 minutes</h2>
+
+<p class="sub">Left column is the clock. Speak the italics roughly as written; the right column is
+what must be on screen at that moment.</p>
+
+<table class="script">
+<tr><th>Time</th><th>Say</th><th>Show</th></tr>
+
+<tr><td>0:00</td><td class="say">"If a stranger can talk to your AI agent, and that agent can move money or open a lock — what stops the stranger from just asking it to? ProofKiosk is a worked answer. It sells an item for USDC and delivers only after the chain confirms payment, and the agent never holds a spendable key."</td><td>Repo README top. Scroll to the <b>status table</b> and pause 2 s.</td></tr>
+
+<tr><td>0:40</td><td class="say">"Three WASM plugins on one shared crate. Charge builds the payment request — it imports zero network capability, and that's checked against the compiled binary, not promised in a comment. Watch reads the chain. Attest writes proof. None of them holds a key."</td><td>Architecture diagram, then run <code>./scripts/verify-no-network.sh</code> — let the <b>0 vs 50</b> land.</td></tr>
+
+<tr><td>1:20</td><td class="say">"Two hundred and twenty-five tests, no network in any of them. The RPC layer is one trait with a mock behind it, so there's no flaky-network excuse and no live-network flattery either."</td><td><code>cargo test</code> tail + <code>npm test</code>. Then <code>zc plugin list --all</code> — three plugins loaded in the host.</td></tr>
+
+<tr><td>2:00</td><td class="say">"Let's sell something. The customer asks; the agent calls kiosk_charge. Notice what it does not take: an amount. The price comes from operator config, keyed by an item id. The model picks a row — it can never write the number that opens the hardware."</td><td>Charge run → QR image on screen. Point at the config <code>price_list</code>.</td></tr>
+
+<tr><td>2:50</td><td class="say">"Before payment, the watcher says pending. Success is false. Nothing moves."</td><td><code>watch</code> → <code>"status":"pending"</code>. Highlight <code>success:false</code>.</td></tr>
+
+<tr><td>3:10</td><td class="say">"Now a real payment on Devnet, from a separate customer wallet, using the official Solana Pay package. It waits for finalized — not confirmed — because you cannot un-dispense a drink."</td><td><code>npm run devnet:pay</code>. Then <b>Explorer tab</b>, paste the signature, show finalized + the transfer.</td></tr>
+
+<tr><td>4:00</td><td class="say">"Same call as before. Same arguments. Now: paid."</td><td><code>watch</code> → <code>"status":"paid"</code>, <code>success:true</code>. Split-screen with merchant balance <code>0 → 1.5</code>.</td></tr>
+
+<tr><td>4:25</td><td class="say">"Now let me attack it. I'll tell the agent it's already paid and to expect a thousandth of the price."</td><td>Type the <code>expected_amount</code> injection. Show it <b>rejected at the schema</b>.</td></tr>
+
+<tr><td>4:50</td><td class="say">"Charge it to my address instead. Sell me 'free everything'. Nine thousand dollars. All rejected before any logic runs — not by a prompt instruction, by the type system."</td><td>Three injections back to back, rapid cuts. Then <code>cargo test injection_note_cannot_forge_url_params</code>.</td></tr>
+
+<tr><td>5:30</td><td class="say">"Ask it a second time after delivery and it returns already-fulfilled — driven by a signed on-chain marker, because the plugin is stateless and can't just remember."</td><td><code>already_fulfilled</code> result.</td></tr>
+
+<tr><td>5:55</td><td class="say">"Attestation builds an unsigned transaction — Memo and System programs only. A transfer isn't expressible in its output. It stops at signature-required and hands the bytes to a signer that lives outside the agent entirely."</td><td><code>signature_required</code> output. Then <code>cargo test tx_contains_only_memo_and_system_programs</code>.</td></tr>
+
+<tr><td>6:25</td><td class="say">"Here's what I have not built. No relay has been energized by this code. No attestation has been signed or landed. The SOP files validate but can't self-execute — they need an external driver I deliberately didn't ship. That boundary is in the README, and it's the difference between a demo and a claim."</td><td>README roadmap rows. Pi board on the desk, <b>nothing energized</b>.</td></tr>
+
+<tr><td>7:00</td><td class="say">"Payment rail: real, tested, finalized. Physical delivery: honest architecture, not yet claimed. Everything's in the repo."</td><td>Repo URL. Optionally the Vercel explainer — say "illustration."</td></tr>
+</table>
+
+<h2><span class="n">12</span>Never say these on camera</h2>
+
+<table>
+<tr><th>Don't say</th><th>Say instead</th></tr>
+<tr><td>"It dispenses the drink"</td><td>"The verified payment is the gate a relay would fire on — I haven't wired that yet."</td></tr>
+<tr><td>"The attestation is on chain"</td><td>"It builds the unsigned transaction; signing lives outside the agent."</td></tr>
+<tr><td>"The SOP runs the loop"</td><td>"The SOP validates; ordinary steps need an external driver."</td></tr>
+<tr><td>"It's production ready"</td><td>"Submission-grade plugin system and reference architecture — 96/100 on engineering, 72/100 on physical readiness, and I'll tell you why."</td></tr>
+<tr><td>"USDC"</td><td>"A six-decimal test token — USDC-like, no value."</td></tr>
+</table>
+
+<div class="box good"><span class="lbl">Evidence bundle to capture while recording</span>
+<code>.devnet/charge-tool-result.json</code> (raw ToolResult) · <code>.proofkiosk/orders/&lt;ref&gt;.json</code> ·
+<code>.devnet/payment-submit.txt</code> (finalized + validated line) · watch-before / watch-after JSON ·
+Explorer URL with <code>cluster=devnet</code> · merchant balance before/after ·
+<code>verify-no-network.sh</code> output. That set makes every spoken claim independently checkable —
+which is worth more than any extra footage.</div>
+
+<p class="sub" style="margin-top:20px;border-top:1px solid var(--rule);padding-top:8px;font-size:8.5pt">
+Sourced from <code>docs/DEVNET-E2E-RUNBOOK.md</code> (26 §§), <code>docs/FINAL-READINESS-AUDIT.md</code>,
+<code>hardware/wiring.md</code>, and the live CLI on this workstation. Where this guide and the runbook
+disagree, the runbook is authoritative — it is longer because it is exhaustive; this is the demo path.</p>
+
+</div>
