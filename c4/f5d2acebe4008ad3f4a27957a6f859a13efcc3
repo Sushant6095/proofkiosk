@@ -1,0 +1,22 @@
+scripts/build-e2e-guide.mjs
+  s_d4e40183daad6c::t_cfd6f6b8d650b5 1-30
+artifacts/e2e-guide.html
+  s_d4e40183daad6c::t_5c558129d46c7e 55-60
+  s_d4e40183daad6c::t_c70c212f870535 1-54,61-428
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "c4f5d2acebe4008ad3f4a27957a6f859a13efcc3",
+  "prompts": {},
+  "sessions": {
+    "s_d4e40183daad6c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5a5651de-86c4-4320-b1a9-751a8456ce34",
+        "model": "unknown"
+      },
+      "human_author": "sushant6095 <sushant.jain@vyapar.com>"
+    }
+  }
+}
