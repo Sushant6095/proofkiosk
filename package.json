@@ -1,0 +1,25 @@
+{
+  "name": "proofkiosk-devnet-tools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "npm run test:handoff",
+    "devnet:pay": "node scripts/devnet-pay.mjs",
+    "test:handoff": "node --test scripts/trusted-charge-handoff.test.mjs scripts/trusted-order-claim.test.mjs"
+  },
+  "dependencies": {
+    "@solana/keys": "6.9.0",
+    "@solana/kit": "6.9.0",
+    "@solana/kit-plugin-instruction-plan": "0.10.0",
+    "@solana/kit-plugin-rpc": "0.11.1",
+    "@solana/kit-plugin-signer": "0.10.0",
+    "@solana/pay": "1.0.26",
+    "@solana-program/memo": "0.11.0",
+    "@solana-program/system": "0.12.0",
+    "@solana-program/token": "0.12.0",
+    "@solana-program/token-2022": "0.9.0",
+    "@solana/rpc-subscriptions-api": "6.9.0",
+    "@solana/rpc-subscriptions-spec": "6.9.0"
+  }
+}
