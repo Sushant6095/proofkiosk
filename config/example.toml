@@ -1,13 +1,14 @@
 # ProofKiosk — example operator config
 #
 # Copy the blocks you need into your ZeroClaw config (`~/.zeroclaw/config.toml`).
-# ZeroClaw injects each `[plugins.<name>.config]` block into that plugin's `execute`
-# call as the flat `__config` string map.
+# ZeroClaw injects each `[[plugins.entries]]` row's
+# `[plugins.entries.config]` block into that plugin's `execute` call as the flat
+# `__config` string map.
 #
 # EVERY value here is operator-owned. The model cannot see, set, or override any of
 # them — recipient, mint, RPC endpoint, nonce accounts, and metric bounds all arrive
 # through this file. The model chooses only an item/amount (charge), a
-# reference/amount (watch), or a bounded reading/event (attest).
+# reference/item id (watch), or a bounded reading/event (attest).
 #
 # SECRETS: there are none in this file, and there should never be any. None of the
 # three plugins holds a private key or signs anything. The one secret in a real
@@ -25,10 +26,23 @@
 # each mint line carries its mainnet counterpart commented out beside it.
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Plugin runtime. Build the exact commit in wit/UPSTREAM_REF (source version
+# 0.8.2) with `plugins-wasm-cranelift` via scripts/install-pinned-zeroclaw.sh.
+# The stock 0.8.3 binary tested during this audit omitted the plugin runtime.
+# ─────────────────────────────────────────────────────────────────────────────
+[plugins]
+enabled = true
+auto_discover = true
+
+# ─────────────────────────────────────────────────────────────────────────────
 # kiosk-charge (T1) — builds the Solana Pay charge. Zero network, zero secrets.
 # ─────────────────────────────────────────────────────────────────────────────
-[plugins.kiosk-charge.config]
-# REQUIRED. Base58 32-byte pubkey where funds land. The only required key.
+[[plugins.entries]]
+name = "kiosk-charge"
+
+[plugins.entries.config]
+# REQUIRED. Base58 32-byte pubkey where funds land. An item-priced deployment must also
+# set explicit mint, decimals, and catalog values that match kiosk-watch below.
 merchant_address = "YOUR_MERCHANT_PUBKEY"
 
 # Optional. SPL mint to charge in. MUST match the network in kiosk-watch's rpc_url.
@@ -36,6 +50,10 @@ merchant_address = "YOUR_MERCHANT_PUBKEY"
 # own throwaway test token and prints it — use whichever you funded.
 usdc_mint = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
 # MAINNET: usdc_mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+# REQUIRED for the trusted cross-plugin handoff. This is operator-supplied metadata:
+# kiosk-watch checks transferChecked against it but does not query the mint account to
+# discover decimals dynamically. Must match the real mint and kiosk-watch.
+token_decimals = "6"
 
 # Optional. Catalog: "item_id:usdc_amount" pairs. An item the model names that is not
 # in this list is refused ("unknown item"), so the catalog is the allowlist.
@@ -54,9 +72,14 @@ label = "Kiosk 01"
 # display_rate     = "5.40"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# kiosk-watch (T0) — verifies the payment on-chain before actuation. Read-only.
+# kiosk-watch (T0 custody) — verifies payment before actuation. It holds no key and
+# builds no transaction, but its generic http_client grant is broader than one RPC
+# origin/method; T0 is not a claim of zero network blast radius.
 # ─────────────────────────────────────────────────────────────────────────────
-[plugins.kiosk-watch.config]
+[[plugins.entries]]
+name = "kiosk-watch"
+
+[plugins.entries.config]
 # REQUIRED. Your Solana JSON-RPC endpoint. kiosk-watch believes the chain state this
 # endpoint reports, so point it somewhere you trust — your own validator, or a
 # reputable provider. A malicious RPC is the one party that could lie about a payment,
@@ -79,19 +102,38 @@ merchant_address = "YOUR_MERCHANT_PUBKEY"
 # are INVOICING-ONLY: kiosk_watch refuses them, so they can never gate a relay.
 price_list = "cold_drink:1.5, snack:0.75"
 
-# REQUIRED to actuate. The only signer whose fulfillment marker counts as proof that a
-# charge was already delivered — this is what makes delivery single-use.
+# REQUIRED for the on-chain replay barrier. The only signer whose fulfillment marker
+# counts as evidence that a charge was delivered. Physical single-host at-most-once
+# behavior comes from the separate durable exclusive claim, not this bounded scan alone.
 #
 # MUST EQUAL kiosk-attest's nonce_authority below. That is the fee payer, and only
 # required signer, of every marker kiosk-attest builds. Set these two to different
-# pubkeys and no marker will ever authenticate: single-use silently stops working and
-# a paid charge can be delivered on every poll. Checked by scripts/check-config.sh.
+# pubkeys and no marker will ever authenticate. The plugin will then keep recognizing a
+# valid payment after the ten-signature marker window no longer contains proof. A trusted
+# actuator must also use the durable host-local order claim. Checked by
+# scripts/check-config.sh.
 device_authority = "YOUR_NONCE_AUTHORITY_PUBKEY"
+
+# REQUIRED for heartbeat mode. Keep these identical to kiosk-attest's nonce
+# account and device id; both are operator config, never model arguments.
+device_address = "YOUR_NONCE_ACCOUNT_PUBKEY"
+device_id      = "kiosk-01"
+
+# Operator-owned time policies. Neither is exposed as a model/tool argument.
+# payment_window_s becomes the persisted quote lifetime: the trusted claim compares the
+# verified payment block time with created_at_ms/expires_at_ms. The watcher intentionally
+# still reports an old on-time payment so an outage can recover it; a payment landed after
+# expiry cannot be claimed. heartbeat_max_silence_s controls the liveness verdict.
+payment_window_s            = "900"
+heartbeat_max_silence_s     = "1800"
 
 # Optional. Mint to expect. Must match the charge mint AND this rpc_url's network.
 # DEVNET (this file):
 usdc_mint = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
 # MAINNET: usdc_mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+token_decimals = "6"
+# `token_decimals` is not discovered from the mint account. A mismatch fails closed but
+# makes legitimate transfers read as mismatches.
 
 # Optional. Commitment gating the verdict. Default and ONLY accepted value for payment
 # verification: "finalized" — economically irreversible. A dispensed item cannot be
@@ -103,7 +145,10 @@ finality = "finalized"
 # ─────────────────────────────────────────────────────────────────────────────
 # kiosk-attest (T1) — unsigned, hash-chained memo attestations. Read-only RPC.
 # ─────────────────────────────────────────────────────────────────────────────
-[plugins.kiosk-attest.config]
+[[plugins.entries]]
+name = "kiosk-attest"
+
+[plugins.entries.config]
 # REQUIRED. Solana JSON-RPC endpoint (same guidance as kiosk-watch). Same network as
 # every other rpc_url in this file — a nonce account exists on one network only.
 rpc_url = "https://api.devnet.solana.com"
@@ -112,7 +157,9 @@ rpc_url = "https://api.devnet.solana.com"
 device_id = "kiosk-01"
 
 # REQUIRED. Durable nonce account pubkey. The attestation chain is scanned here, and
-# the nonce is what lets an attestation built offline stay submittable later.
+# the nonce is what lets one attestation remain submittable while awaiting its signer.
+# One nonce supports one pending artifact: serialize build -> sign -> submit -> finalized
+# before building the next artifact from this account.
 nonce_account = "YOUR_NONCE_ACCOUNT_PUBKEY"
 
 # REQUIRED. Nonce authority / fee payer pubkey. Must own the nonce account above.

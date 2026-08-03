@@ -27,7 +27,8 @@ for p in "${PLUGINS[@]}"; do
   out="$ROOT/staged/$p"
 
   echo "[stage] building $p"
-  ( cd "$src" && cargo build --target wasm32-wasip2 --release >/dev/null )
+  ( cd "$src" && CARGO_TARGET_DIR="$src/target" \
+      cargo build --locked --target wasm32-wasip2 --release >/dev/null )
 
   mkdir -p "$out"
   cp "$src/manifest.toml" "$out/manifest.toml"

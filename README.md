@@ -12,8 +12,10 @@ talk to your agent and your agent can move funds or actuate something, this repo
 worked example of how to make that safe by construction rather than by prompt. Three
 small WASM tool plugins over one shared pure crate; each is useful on its own.
 
-**The payment rail is built and tested. The actuation and attestation legs are not yet
-demonstrated end to end.** The table below is the authoritative split — read it before
+**The payment rail is built and host-tested, and the localnet harness has landed a
+reference-bearing test-token transfer at `finalized`. A public-devnet/browser-wallet
+run, physical actuation, and signed attestation submission still need demonstration.** The table below
+is the authoritative split — read it before
 anything else in this README, which describes the full design including parts that do not
 run yet.
 
@@ -21,15 +23,19 @@ run yet.
 
 | Capability | Status | Evidence / what's missing |
 |---|---|---|
-| Charge → Solana Pay `solana:` URL + reference | ✅ **Runs today** | `kiosk-charge`, 12 tests. Zero network: the component imports **0** `wasi:http` interfaces, checked against the compiled artifact by `scripts/verify-no-network.sh`. QR is rendered host-side by [`skills/kiosk-qr`](skills/kiosk-qr). |
-| On-chain payment verification | ✅ **Runs today** | `kiosk-watch`, 36 tests. Verifies recipient + mint + amount + reference against the chain. |
+| Charge → Solana Pay `solana:` URL + reference | ✅ **Runs today** | `kiosk-charge`, 19 tests. Zero network: the component imports **0** `wasi:http` interfaces, checked against the compiled artifact by `scripts/verify-no-network.sh`. The host-side QR boundary accepts only a raw host-direct result, validates it against operator config, and persists the order before rendering. |
+| On-chain payment verification | ✅ **Runs today** | `kiosk-watch`, 76 tests. Verifies recipient, mint, configured decimals/amount, exact transfer shape, reference account, payer signer, and the versioned `PKPAY1` reference/item memo at `finalized`. `scripts/devnet-pay.mjs` separately submits and `validateTransfer`-checks a reference-bearing test-token transfer; that independent harness is not itself an invocation of `kiosk-watch`. |
 | — priced from operator config, not the model | ✅ **Runs today** | The gating amount is looked up from `price_list` by `item_id`; a model-supplied amount cannot reach the gate. Free-amount charges are invoicing-only and structurally never actuation-eligible. |
-| — replay-proof | ✅ **Runs today** | A second fulfillment of the same reference returns `AlreadyFulfilled`, driven by an **authenticated** on-chain marker, not local state. |
-| — bounded against a reference-poisoning DoS | ✅ **Runs today** | The signature scan and marker authentication are both hard-capped (`SIG_LIMIT`, `MARKER_AUTH_LIMIT`), so a public reference cannot be flooded to exhaust the scan. |
-| Host test suite, no network in any test | ✅ **Runs today** | **142 tests** across four crates; all RPC is mocked through a one-method transport seam. |
-| `finalized`-only gate for actuation | ✅ **Runs today** | A payment verdict requires `finalized` and refuses `confirmed`/`processed` outright; the default is `finalized`. The weaker commitments stay legal for heartbeat mode, which does not actuate. |
-| SOP-driven relay actuation | 🚧 **Roadmap** | The SOPs validate and their routing is verified against the runtime, but the guard predicate does not resolve: ZeroClaw's routing payload carries a step's output *string*, not a structured field. Fails closed (relay stays shut), so the loop does not dispense. See [`sops/payment-loop/SOP.md`](sops/payment-loop/SOP.md). |
-| Attestation landing + finalizing on chain | 🚧 **Roadmap** | `kiosk-attest` builds a correct **unsigned** durable-nonce memo transaction (24 tests). Nothing in this repo signs or submits it, and no attestation has been observed landing on chain. |
+| — replay-resistant verifier | ✅ **Host-tested** | Once an **authenticated** `PKFUL1` marker has landed, the same reference can return `AlreadyFulfilled` while that marker remains in the bounded ten-signature scan. The durable local claim is the single-host physical replay barrier; signer/submission for the on-chain marker remains roadmap. |
+| — bounded work under reference poisoning | ✅ **Runs today** | One ten-signature window is scanned and every tagged candidate in it is authenticated. Work is bounded; more than ten newer public transactions can still push a payment or marker outside that window, which fails closed for first delivery but is a residual replay risk after delivery. |
+| Authenticated heartbeat verdict | ✅ **Runs today** | Heartbeat address and device id are operator config. A candidate counts only after the configured authority signed it and the configured device account is present; spoofed public memos are ignored. |
+| Automated test suite | ✅ **Runs today** | **213 Rust tests** across four crates (80 core / 19 charge / 76 watch / 38 attest), plus **12 Node trusted-boundary tests**: **225 total**. Rust RPC tests are mocked and use no live network. A separate exact-host integration test and shell host-infrastructure regression also pass. |
+| Exact pinned ZeroClaw execution | ✅ **Runs today** | `host-smoke.sh` transitively runs `exact-host-runtime-smoke.sh` against a pristine pinned source tree and lockfile. Deterministic local JSON-RPC fixtures drive valid business paths for all three components: charge `created`, watch `paid` after two RPC calls, and attest `signature_required` from a valid nonce/init history with `minContextSlot`. It proves host config defeats caller-spoofed `__config`, then carries the actual charge and paid-watch `ToolResult`s through trusted persistence, economics/time validation, one exclusive claim, and duplicate-claim rejection. This is exact-host local-fixture evidence, not public-Devnet evidence. |
+| `finalized`-only paid verdict | ✅ **Runs today** | A payment verdict requires `finalized` and refuses `confirmed`/`processed` outright; the default is `finalized`. The weaker commitments stay legal for heartbeat mode. A paid verdict still requires the trusted host-local claim before actuation. |
+| SOP-driven relay actuation | 🚧 **Roadmap** | `kiosk-watch` emits structured JSON and the host-local trusted boundary can persist and claim an order. The exact pinned ZeroClaw headless path still does not dispatch ordinary plugin steps, and this repo ships no actuator driver, pulse adapter, delivery sensor, or signer. See [`sops/payment-loop/SOP.md`](sops/payment-loop/SOP.md). |
+| Attestation landing + finalizing on chain | 🚧 **Roadmap** | `kiosk-attest` builds a correct **unsigned** durable-nonce memo message (38 tests) and reports `signature_required`. Nothing in this repo signs or submits it, and no attestation has been observed landing on chain. One durable nonce supports one pending artifact at a time; a driver must serialize build → sign → submit → finalize. |
+| Structured charge/order handoff | ✅ **Runs today** | `kiosk-charge` returns versioned JSON with reference, item, amount, merchant, mint, timestamp, URL, and a separate human message. The on-chain `PKPAY1` memo binds reference + item, preventing equal-price SKU substitution. |
+| Trusted order persistence + host-local claim | ✅ **Runs today** | `trusted-charge-handoff.mjs` accepts only raw host-direct machine output, cross-checks charge/watch config and the exact Solana Pay URI, and durably snapshots reference, item, amount, recipient, mint, decimals, quote window, creation time, and expiry. `trusted-order-claim.mjs` requires the paid result to match every immutable economic/policy field and requires its landed block time to fall inside that quote before exclusive creation. Catalog changes cannot underpay an old order, and delayed observation can recover a payment that landed on time. This remains single-host at-most-once claiming, not exactly-once physical delivery. |
 | Physical hardware (Pi + relay + sensor) | 🚧 **Roadmap** | [`hardware/wiring.md`](hardware/wiring.md) is a build guide, not a record of a build. No GPIO has been driven by this code on camera. |
 
 Nothing below this table has been removed — the architecture, the three-rung ladder, and
@@ -50,9 +56,9 @@ flowchart LR
     CH -->|"solana: URL + reference"| W["Customer's own wallet<br/>signs the payment"]
     W -->|"USDC"| M["Merchant wallet<br/>(operator config)"]
     A --> WA["kiosk-watch · T0<br/>read-only RPC"]
-    WA -->|"verify recipient + mint<br/>+ amount + reference<br/>+ finality"| SOL[("Solana")]
+    WA -->|"verify recipient + mint<br/>+ amount + reference/item memo<br/>+ finality"| SOL[("Solana")]
     M --- SOL
-    WA -. "success == true ONLY<br/><b>(roadmap — not wired)</b>" .-> R["GPIO relay<br/>→ item drops"]
+    WA -. "paid + persisted order<br/>+ exclusive claim<br/><b>(roadmap — not wired)</b>" .-> R["GPIO relay<br/>→ item drops"]
     A --> AT["kiosk-attest · T1<br/>unsigned memo tx"]
     AT -->|"hash-chained<br/>durable-nonce memo"| S["External operator signer"]
     S -. "<b>(roadmap — never landed)</b>" .-> SOL
@@ -64,9 +70,9 @@ the invoice and reads the chain; pulsing a pin off that verdict is the leg still
 
 | Component | Tier | Question it answers | Network | Size |
 |---|---|---|---|---|
-| [`plugins/kiosk-charge`](plugins/kiosk-charge) | T1 | "What should the customer pay?" → Solana Pay `solana:` URL | **none** | 210 KB |
-| [`plugins/kiosk-watch`](plugins/kiosk-watch) | T0 | "Did the money actually arrive, and was this charge already delivered?" → PAID / PENDING / EXPIRED / MISMATCH / ALREADY FULFILLED | read-only RPC | 356 KB |
-| [`plugins/kiosk-attest`](plugins/kiosk-attest) | T1 | "Prove what happened." → hash-chained unsigned memo tx | read-only RPC | 389 KB |
+| [`plugins/kiosk-charge`](plugins/kiosk-charge) | T1 | "What should the customer pay?" → Solana Pay `solana:` URL | **none** | 220 KB / 250 KB budget |
+| [`plugins/kiosk-watch`](plugins/kiosk-watch) | T0 | "Did the money actually arrive, and was this charge already delivered?" → PAID / PENDING / MISMATCH / ALREADY FULFILLED | HTTP client to operator RPC | 390 KB / 400 KB budget |
+| [`plugins/kiosk-attest`](plugins/kiosk-attest) | T1 | "Prove what happened." → hash-chained unsigned memo tx | HTTP client to operator RPC | 418 KB / 450 KB budget |
 | [`crates/kiosk-core`](crates/kiosk-core) | — | shared pure substrate: base58/base64, shortvec, Solana Pay, memo + nonce builders, JSON-RPC seam, output shaping | — | rlib |
 
 ---
@@ -77,21 +83,31 @@ the invoice and reads the chain; pulsing a pin off that verdict is the leg still
 material. Jailbreaking the chatbot yields no till to raid, because there is no till — the
 recipient is fixed by operator config and unreachable from the prompt.
 
-**2. The actuation verdict comes from a verified on-chain payment, not from what the agent
-believes.** `kiosk-watch` returns `success == true` **iff** the **operator-configured
+**2. The payment fact comes from verified chain state, not from what the agent
+believes.** `kiosk-watch` returns inner `success == true` **iff** the **operator-configured
 price** of the requested item reached the merchant at the configured finality — there is
 no amount argument, so the number gating the hardware is unreachable from the prompt.
-Pending, mismatch, expiry, and RPC failure all fail closed.
-*Scope:* the verdict is built and tested; **the relay is not yet wired to it** — see the
-status table. Commitment currently defaults to `confirmed`, not `finalized`.
+The landed transfer must also carry the exact `PKPAY1` memo binding this reference to
+that item, so one transaction cannot clear several equal-priced catalog rows.
+Pending, mismatch, and RPC failure all fail closed. An old payment can still be reported
+as a chain fact; the trusted claim uses its block time to reject payment after the
+persisted quote expiry while allowing late recovery of an on-time payment.
+The same paid object carries the verified economics/policy, sets `actuation_authorized:false`, and
+`requires_atomic_claim:true`. *Scope:* the verdict and claim boundary are built and
+tested; **the relay is not wired to them** — see the status table. Payment verification
+defaults to and requires `finalized`.
 
-**3. A charge is fulfilled once.** `kiosk-attest` builds a `PKFUL1` fulfillment marker and
-`kiosk-watch` returns `ALREADY FULFILLED` for that charge from then on. The plugin is
-stateless by construction, so single-use is read back off the chain rather than
-remembered — and a marker counts only if the operator's device authority signed it, so a
-stranger cannot forge one to block a delivery.
+**3. A charge can be marked fulfilled.** `kiosk-attest` builds an unsigned `PKFUL1`
+fulfillment marker artifact and
+`kiosk-watch` can return `ALREADY FULFILLED` while that authenticated marker remains in
+its bounded ten-signature scan. The plugin is
+stateless by construction, so this cross-host replay evidence is read back off-chain;
+a marker counts only if the operator's device authority signed it and its named payment
+re-verifies, so a stranger cannot forge one to block a delivery. Physical single-host
+actuation must also use the exclusive durable claim.
 *Scope:* the marker is built and the authenticated read-back is tested against mocked RPC;
-**no marker has been signed and landed on chain yet.**
+**no marker has been signed and landed on chain yet, so the shipped flow is not by itself
+exactly-once.**
 
 None of these is asserted on faith:
 
@@ -101,7 +117,8 @@ None of these is asserted on faith:
   than trivially pass.
 - The attestation transaction is asserted to contain **only** the Memo and System
   programs, by inspecting the compiled program-id set. A transfer is not expressible.
-- Every fail-closed behavior is a host test. 142 of them, RPC mocked, no network.
+- Fail-closed behavior is covered by 213 Rust tests with mocked RPC plus 12 Node tests at
+  the trusted host boundary. The exact pinned-host runtime test is a separate gate.
 
 ## Custody tiers, and why each component sits where it does
 
@@ -110,14 +127,14 @@ completely subverted?*
 
 | Tier | Definition | Blast radius of total compromise |
 |---|---|---|
-| **T0** | No key, builds no transaction. Reads only. | Nothing. It can lie about chain state; that is all. |
-| **T1** | No key. May *build* a transaction, but signs nothing and cannot express a transfer. | An artifact an external signer must still choose to sign. No funds move. |
+| **T0** | No key and no transaction-building or fund-movement capability. | No funds or signing keys. This is a **custody** tier, not a complete sandbox claim: `kiosk-watch` has a generic HTTP-client permission, trusts its configured RPC, and a compromised component could falsify verdicts or misuse that network capability within host policy. |
+| **T1** | No key. May build a customer-signable payment request or a constrained unsigned transaction, but cannot sign or submit either. | An artifact an external customer/operator must still inspect and sign. No funds move by itself. |
 | **T2** | Scoped spend authority (rate-limited, allowlisted destination). | Bounded by the scope. **Not shipped here.** |
 | **T3** | Unscoped spendable key. | Everything. |
 
 `kiosk-watch` is T0. `kiosk-charge` and `kiosk-attest` are T1. There is no T2 or T3
-component in this repo, and the one private key a full deployment uses — the external
-attestation signer — lives outside ZeroClaw entirely.
+component in this repo. Customer-wallet, merchant-custody, and external-attestation
+signing keys all live outside ZeroClaw entirely.
 
 ### Where a Tier-1 skill would suffice, honestly
 
@@ -153,65 +170,81 @@ skill.
 
 The full "ask for money → confirm money" loop against localnet or devnet:
 
-1. `./scripts/devnet-setup.sh` — starts a validator (or targets devnet), mints a
-   USDC-like test SPL token, prints a paste-ready config block.
+1. `./scripts/devnet-setup.sh` — starts a validator (or targets devnet), creates separate
+   merchant/customer wallets, mints a USDC-like test SPL token to the customer, creates a
+   nonce account, and prints canonical config.
 2. Call `kiosk_charge` → get a `solana:` URL → pay it from any devnet wallet.
 3. Call `kiosk_watch` with the returned `reference` → watch `PENDING` flip to `PAID`.
 
 ### Rung 2 — add a sensor (attestation)
 
-A BME280 or any sensor tool. `kiosk-attest` writes each reading as a hash-chained,
-durable-nonce memo transaction, so the environmental record is tamper-evident on-chain.
-See [`sops/sensor-loop/`](sops/sensor-loop).
+A BME280 or any sensor tool is the next integration rung. `kiosk-attest` builds each
+reading as an unsigned hash-chained durable-nonce memo message; an external signer must
+validate, submit, and finalize it before the environmental record exists on-chain. See
+[`sops/sensor-loop/`](sops/sensor-loop).
 
 ### Rung 3 — add a relay (physical delivery)
 
 A 5 V opto-isolated relay on a Raspberry Pi 4 — pin map, safety notes, and calibration in
 [`hardware/wiring.md`](hardware/wiring.md). The payment-loop SOP pulses the relay for
-exactly one condition: `kiosk_watch` returned a verified payment.
+exactly one intended condition: a raw host-direct verified payment matched a persisted
+order and the external driver won that order's exclusive claim. The driver/adapter is not
+shipped.
 
-> **At-least-once, by choice.** The fulfillment marker is written *after* the relay
-> pulses, so a failed marker write can let a later poll re-fire. For a lock or a charger
-> that is a harmless re-unlock; **for a consumable dispenser it is not** — those need
-> at-most-once ordering, which this loop does not ship. Reasoning in
-> [`docs-local/DECISIONS.md`](docs-local/DECISIONS.md).
+> **Host-local at-most-once is implemented; exactly-once delivery is not.** A trusted
+> driver can persist the raw host-direct charge result, require a raw host-direct paid
+> verdict to match the immutable amount/recipient/mint/decimals/window and quote time,
+> and exclusively create one claim before actuation. A second claim fails. A
+> crash after that claim but before the pulse can still leave a paying customer with no
+> item, and there is no claimed → actuating → delivered recovery state machine or delivery
+> sensor. Reasoning in [`sops/payment-loop/SOP.md`](sops/payment-loop/SOP.md).
 
-> **Honest status on rung 3: demo-wired, not production-wired.** The SOP validates and its
-> routing is verified against the runtime, but the guard predicate (`$.steps.1.success`)
-> does not resolve yet — ZeroClaw's routing payload carries a step's output *string*, not
-> the `ToolResult.success` boolean. Unresolved paths evaluate false, so the live behavior
-> is the safe one (the relay stays shut), but the loop does not dispense as shipped. Full
-> detail and the two ways to close it: [`sops/payment-loop/SOP.md`](sops/payment-loop/SOP.md).
+> **Honest status on rung 3: an integration contract, not a running loop.** The watcher
+> emits routeable JSON and the SOP validates, but exact pinned ZeroClaw headless execution
+> does not self-dispatch ordinary plugin steps. A driver must carry the generated order
+> values through `kiosk_watch`, consume the trusted host-local claim, invoke a safe pulse
+> adapter, and submit the fulfillment marker. `relay_pulse`, the driver, signer, sensor,
+> and physical recovery state machine are not shipped here. Full detail:
+> [`sops/payment-loop/SOP.md`](sops/payment-loop/SOP.md).
 
 ---
 
 ## Reproduce it in an evening
 
-Tested against ZeroClaw **v0.8.3**. Wall-clock is dominated by two cargo builds.
+The compatible host is pinned to ZeroClaw commit
+[`e112ce6b5ccdac9e1cb166bab217e730dd7e24c2`](https://github.com/zeroclaw-labs/zeroclaw/commit/e112ce6b5ccdac9e1cb166bab217e730dd7e24c2),
+whose source identifies as **0.8.2**. Wall-clock is dominated by the host and component
+builds.
 
 **1. A host with the plugin runtime.** The prebuilt binaries ship *without* it —
 `zeroclaw plugin …` is an unrecognized subcommand there, and installed plugins are never
-discovered. Build from source; one backend flag carries the `plugins-wasm` umbrella:
+discovered. Clone this repo, then use the pinned installer from its root:
 
 ```bash
-./install.sh --source --features plugins-wasm-cranelift
+git clone https://github.com/Sushant6095/proofkiosk.git
+cd proofkiosk
+./scripts/install-pinned-zeroclaw.sh
+export PATH="$PWD/.build/zeroclaw-install/bin:$PATH"
 ```
 
 On a Raspberry Pi for rung 3, add the GPIO tools:
 
 ```bash
-./install.sh --source --features plugins-wasm-cranelift,hardware,peripheral-rpi
+ZEROCLAW_FEATURES=plugins-wasm-cranelift,hardware,peripheral-rpi \
+  ./scripts/install-pinned-zeroclaw.sh
 ```
 
 **2. Build, test, and stage all three components:**
 
 ```bash
 rustup target add wasm32-wasip2
-git clone https://github.com/Sushant6095/proofkiosk.git && cd proofkiosk
 
 for d in crates/kiosk-core plugins/kiosk-charge plugins/kiosk-watch plugins/kiosk-attest; do
-  (cd "$d" && cargo test)          # 142 tests total, no network
+  (cd "$d" && cargo test --locked) # 213 Rust tests total, mocked RPC
 done
+
+npm ci
+npm run test:handoff                 # 9 trusted-boundary tests
 
 ./scripts/stage-plugin.sh          # -> staged/{kiosk-charge,kiosk-watch,kiosk-attest}/
 ```
@@ -229,26 +262,57 @@ zeroclaw plugin list               # all three should appear
 A plugin missing from `plugin list` was skipped at discovery — the startup log names the
 reason (malformed manifest, missing `wasm_path` file, or signature policy).
 
-**4. Configure.** Minimal working config, three keys total for the payment rail:
+**4. Configure.** Minimal payment-rail config. Each plugin is one
+`[[plugins.entries]]` row; the nested config table always follows the row it belongs to:
 
 ```toml
-[plugins.kiosk-charge.config]
-merchant_address = "YOUR_MERCHANT_PUBKEY"   # usdc_mint, cap, label all default
+[plugins]
+enabled = true
+auto_discover = true
 
-[plugins.kiosk-watch.config]
+[[plugins.entries]]
+name = "kiosk-charge"
+[plugins.entries.config]
+merchant_address = "YOUR_MERCHANT_PUBKEY"
+usdc_mint        = "YOUR_TEST_TOKEN_MINT"
+token_decimals   = "6"                       # operator-owned; checked against transferChecked
+price_list       = "cold_drink:1.5"
+
+[[plugins.entries]]
+name = "kiosk-watch"
+[plugins.entries.config]
 rpc_url          = "https://api.devnet.solana.com"
-merchant_address = "YOUR_MERCHANT_PUBKEY"   # usdc_mint defaults to USDC, finality to "confirmed"
+merchant_address = "YOUR_MERCHANT_PUBKEY"   # set usdc_mint to the mint on this network
+usdc_mint        = "YOUR_TEST_TOKEN_MINT"    # must exactly match kiosk-charge
+token_decimals   = "6"                       # must exactly match kiosk-charge
 price_list       = "cold_drink:1.5"         # must match kiosk-charge's — this is the gating price
 device_authority = "YOUR_NONCE_AUTHORITY"   # must equal kiosk-attest's nonce_authority
+device_address   = "YOUR_NONCE_ACCOUNT"     # must equal kiosk-attest's nonce_account
+device_id        = "kiosk-01"                # must equal kiosk-attest's device_id
+payment_window_s = "900"                    # persisted quote lifetime; not a tool argument
+heartbeat_max_silence_s = "1800"            # operator-owned; not a tool argument
+finality          = "finalized"
+
+[[plugins.entries]]
+name = "kiosk-attest"
+[plugins.entries.config]
+rpc_url          = "https://api.devnet.solana.com" # must match kiosk-watch
+device_id        = "kiosk-01"                      # must match kiosk-watch
+nonce_account    = "YOUR_NONCE_ACCOUNT"            # must equal watch.device_address
+nonce_authority  = "YOUR_NONCE_AUTHORITY"          # must equal watch.device_authority
+allowed_metrics  = "temp_c:-40:85"
+custody_mode     = "t1"
 ```
 
-`scripts/check-config.sh` verifies those last two agree across sections; a mismatch
-disables single-use delivery silently.
+`scripts/check-config.sh` verifies merchant, mint, decimals, prices, device identity,
+and authority relationships across sections. The decimal count is operator-owned and
+must match the mint; the verifier checks `transferChecked` against it but does not query
+the mint account to discover decimals dynamically.
 
 Full annotated config including `kiosk-attest` and the `[sop]` block:
-[`config/example.toml`](config/example.toml). **There are no secrets to redact** — no
-component holds key material. The only private key in a deployment belongs to the external
-attestation signer and never enters ZeroClaw's config.
+[`config/example.toml`](config/example.toml). **There are no private signing keys in that
+file** — no component holds key material. Customer, merchant, and attestation keys stay
+outside ZeroClaw. Treat `rpc_url` as a secret if it embeds a provider API key.
 
 **5. Sell something,** in chat on any channel:
 
@@ -257,7 +321,21 @@ attestation signer and never enters ZeroClaw's config.
 > is it paid?                -> kiosk_watch flips PENDING -> PAID once it confirms
 ```
 
-**6. Load the SOPs** (cron loops for payment, sensor, heartbeat):
+For a deterministic localnet payment proof with separate customer and merchant wallets:
+
+```bash
+npm ci
+MODE=localnet ./scripts/devnet-setup.sh
+source .devnet/payment.env
+npm run devnet:pay
+```
+
+The last command signs with the throwaway **customer** key, waits for `finalized`, and
+validates recipient, mint, amount, and reference. It never uses real funds. Public devnet
+uses the same harness with `MODE=devnet`, subject to faucet availability.
+
+**6. Validate the SOP contracts.** This proves they parse; it does **not** make the
+ordinary plugin steps self-executing in headless cron mode at the pinned host revision:
 
 ```bash
 zeroclaw config set sop.sops_dir "$PWD/sops"
@@ -265,13 +343,25 @@ zeroclaw sop validate            # all 3 valid
 zeroclaw sop graph proofkiosk-payment-loop
 ```
 
+See [`sops/README.md`](sops/README.md) before attempting automation. The working demo
+path is agent/external-driver invocation of `kiosk_charge` → wallet payment →
+`kiosk_watch`; hardware actuation and attestation submission remain explicit adapters.
+
 **7. Check the claims yourself:**
 
 ```bash
 ./scripts/verify-no-network.sh    # kiosk-charge wasi:http imports == 0
-./scripts/wasm-size.sh            # component sizes vs the 250 KB target
+./scripts/wasm-size.sh            # enforced budgets: charge 250, watch 400, attest 450 KB
 ./scripts/check-config.sh         # cross-plugin config: authorities + price lists agree
+./scripts/host-smoke.sh           # installs/loads and runs the separate exact-host test
 ```
+
+`host-smoke.sh` installs all three components and invokes the exact pinned ZeroClaw
+runtime test transitively. Deterministic local JSON-RPC fixtures drive valid charge,
+paid-watch, and unsigned-attest business paths across the real WIT boundary; the test
+also checks config-jail behavior and `minContextSlot`. This remains local-fixture evidence,
+not a public-Devnet host-direct trace. The localnet/devnet transfer harness is independent
+evidence: it proves a finalized Solana Pay-shaped transfer and does not invoke the plugin.
 
 ---
 
@@ -293,9 +383,10 @@ smuggled operator field fails deserialization *before any logic runs*.
 | Fake `PKFUL1` fulfillment marker written on the public reference to block a delivery | **Ignored** — a marker counts only if the operator's device authority signed it. |
 | Junk tx written on the reference to mask the real payment | **Ignored** — the signature list is scanned, not just its head. |
 | Replay: poll again after delivery | **`AlreadyFulfilled`** → relay does not re-fire. |
-| RPC errors, times out, or returns garbage | **`Err`, never `Paid`** → relay stays shut. |
+| RPC error, non-2xx response, or malformed body | **WIT execution failure:** outer `success:false`, empty `output`, populated `error`; there is no `Paid` business object and a driver must hold. The client has a connect timeout and body cap, but no overall response/read deadline. |
 | Wrong amount / recipient / mint, or `meta.err != null` | **`Mismatch`** → `success:false`. |
-| Reused reference older than `window_s` | **`Expired`** → single-use reference is the replay guard. |
+| Payment lands after the persisted quote's `payment_window_s` | Watch can still report the verified chain fact, but the trusted claim rejects its `payment_block_time_s`; observing an on-time payment after an outage remains recoverable. |
+| Catalog price changes after a QR was issued | The paid output carries verified amount/recipient/mint/decimals/window and the trusted claim compares every field with the immutable order snapshot; changed terms cannot underpay the older quote. |
 | "Attest to MY account" → `{"nonce_authority": …}` | **Rejected** before any logic. |
 | Metric not allowlisted, or value outside `[min,max]`, or `NaN`/`±inf` | **Rejected** — refused, never clamped into a plausible lie. |
 | "Add a transfer to the attestation transaction" | **Impossible** — Memo + System only, asserted structurally. |
@@ -330,15 +421,14 @@ The parts that cost real time, kept here because they are the reusable lessons:
   raw-key allowlist is load-bearing rather than belt-and-braces.
 - **A fresh store per call means no state, at all.** The host builds a new WASI context
   and fuel budget for every `execute`. A `static` counter silently resets. This is what
-  forced the attestation chain to recover `seq`/`prev` from the ledger in a single RPC
-  call — which turned out better anyway, because a gap becomes detectable instead of
-  silently skipped.
+  forced the attestation chain to recover `seq`/`prev` from one bounded signature window
+  plus authenticated transaction fetches — which turned out better anyway, because a
+  gap becomes detectable instead of silently skipped.
 - **Hyphens become underscores.** `kiosk-charge` builds to `kiosk_charge.wasm`, and
   `wasm_path` must name the artifact exactly. `scripts/stage-plugin.sh` reads the manifest
   rather than guessing.
-- **HTTP/TLS is most of the binary, not your code.** 210 KB offline versus 356 KB with a
-  client bundled. Dropping `wasi:http` is worth ~140 KB and is the cheapest size win
-  available.
+- **HTTP/TLS dominates networked components.** The offline charge component is smaller;
+  watch and attest bundle a client. CI enforces explicit per-component budgets.
 - **The SOP file format is not what the docs' TOML examples suggest.** Steps parse from
   `SOP.md`'s `## Steps` section, not from `[[steps]]` in TOML, and a malformed SOP is
   skipped **silently** — `zeroclaw sop list` just reports none found. Only
@@ -354,11 +444,12 @@ All green, **no network in any test**.
 
 | Component | Tests | Clippy `-D warnings` | rustfmt | wasm32-wasip2 |
 |---|---|---|---|---|
-| kiosk-core | 55 (incl. property + fuzz) | clean | clean | — (rlib) |
-| kiosk-charge | 16 | clean | clean | 210 KB ✔ <250 KB |
-| kiosk-watch | 46 | clean | clean | 356 KB (bundles HTTP/TLS) |
-| kiosk-attest | 25 | clean | clean | 389 KB (bundles HTTP/TLS) |
-| **total** | **142** | **clean** | **clean** | `scripts/wasm-size.sh` |
+| kiosk-core | 80 (69 unit + 8 fuzz + 3 property) | clean | clean | — (rlib) |
+| kiosk-charge | 19 | clean | clean | 220 KB ✔ <250 KB |
+| kiosk-watch | 76 | clean | clean | 390 KB ✔ <400 KB |
+| kiosk-attest | 38 | clean | clean | 418 KB ✔ <450 KB |
+| Node trusted-boundary | 12 | — | — | handoff + immutable quote/economics + exclusive claim |
+| **total** | **225** | **clean** | **clean** | plus separate exact-host runtime 1/1 and shell host-infra regression |
 
 ## Repo map
 
@@ -366,10 +457,11 @@ All green, **no network in any test**.
 |---|---|
 | [`crates/kiosk-core`](crates/kiosk-core) | Shared pure Solana substrate. Zero wasm deps; host-testable. |
 | [`plugins/`](plugins) | The three WIT tool components, each with its own README. |
-| [`sops/`](sops) | Cron SOPs: payment loop, sensor loop, heartbeat. All validate against v0.8.3. |
+| [`sops/`](sops) | Example payment, sensor, and heartbeat SOP contracts. They validate on the exact pin; ordinary plugin steps still need an external driver. |
 | [`config/example.toml`](config/example.toml) | Annotated operator config. |
 | [`hardware/wiring.md`](hardware/wiring.md) | Pi 4 + relay + BME280: pin map, safety, calibration. |
 | [`docs/threat-model.md`](docs/threat-model.md) | Custody tiers, trust boundaries, full injection transcript. |
+| [`docs/FINAL-READINESS-AUDIT.md`](docs/FINAL-READINESS-AUDIT.md) | Final 96/100 engineering scorecard, green evidence, and remaining path to 100. |
 | [`docs/index.html`](docs/index.html) | The interactive explainer site (see below). |
 | [`SECURITY.md`](SECURITY.md) | Third-party trust surface: what this needs and, mostly, doesn't. |
 | [`scripts/`](scripts) | devnet setup, plugin staging, wasm size, no-network proof, cross-plugin config check. |
@@ -401,8 +493,10 @@ and no external assets. Also mirrored on GitHub Pages at
 <https://sushant6095.github.io/proofkiosk/>; Vercel is the primary URL and both serve the
 same file from `main`.
 
-**Built on:** [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw) v0.8.3 (WIT
-`tool-plugin` world v0, vendored in [`wit/v0`](wit/v0)). Read-only Solana skill worth
+**Built on:** [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw) commit
+[`e112ce6b5ccdac9e1cb166bab217e730dd7e24c2`](https://github.com/zeroclaw-labs/zeroclaw/commit/e112ce6b5ccdac9e1cb166bab217e730dd7e24c2)
+(source version 0.8.2; WIT `tool-plugin` world v0 vendored in [`wit/v0`](wit/v0)).
+Read-only Solana skill worth
 studying for comparison:
 [LubuSeb/solana-treasury-sentinel](https://github.com/LubuSeb/solana-treasury-sentinel).
 

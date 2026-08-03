@@ -7,27 +7,62 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
   build-test-lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - name: Install Rust + wasm32-wasip2
+      - name: Install pinned Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24.10.0
+          cache: npm
+
+      - name: Validate pinned Solana Pay devnet client
         run: |
-          rustup toolchain install stable --profile minimal --component clippy,rustfmt
-          rustup target add wasm32-wasip2
+          npm ci --ignore-scripts --no-audit --no-fund
+          node --check scripts/devnet-pay.mjs
+          npm run test:handoff
+          npm audit --omit=dev --audit-level=high
+
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.97.1 \
+            --profile minimal \
+            --component clippy,rustfmt \
+            --target wasm32-wasip2
+          rustc --version --verbose
+          cargo --version
+
+      - name: Validate shell and cross-plugin config
+        run: |
+          bash -n scripts/*.sh
+          bash scripts/host-infra-regression.sh
+          ./scripts/check-config.sh config/example.toml
 
       - name: Test (host, no network)
         run: |
           for d in crates/kiosk-core plugins/kiosk-charge plugins/kiosk-watch plugins/kiosk-attest; do
-            echo "::group::cargo test $d" && (cd "$d" && cargo test) && echo "::endgroup::"
+            echo "::group::cargo test $d" && (cd "$d" && cargo test --locked) && echo "::endgroup::"
           done
 
       - name: Clippy (-D warnings)
         run: |
           for d in crates/kiosk-core plugins/kiosk-charge plugins/kiosk-watch plugins/kiosk-attest; do
-            echo "::group::cargo clippy $d" && (cd "$d" && cargo clippy --all-targets -- -D warnings) && echo "::endgroup::"
+            echo "::group::cargo clippy $d" && (cd "$d" && cargo clippy --locked --all-targets -- -D warnings) && echo "::endgroup::"
           done
 
       - name: rustfmt check
@@ -36,11 +71,53 @@ jobs:
             (cd "$d" && cargo fmt --check)
           done
 
-      - name: Build wasm32-wasip2 (release)
-        run: |
-          for d in plugins/kiosk-charge plugins/kiosk-watch plugins/kiosk-attest; do
-            echo "::group::wasm build $d" && (cd "$d" && cargo build --target wasm32-wasip2 --release) && echo "::endgroup::"
-          done
+      - name: Build WASM and enforce size budgets
+        run: ./scripts/wasm-size.sh
 
       - name: Prove kiosk-charge imports no wasi:http
         run: ./scripts/verify-no-network.sh
+
+  zeroclaw-host-compatibility:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install pinned Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24.10.0
+          cache: npm
+
+      - name: Install trusted-boundary dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.97.1 \
+            --profile minimal \
+            --component clippy,rustfmt \
+            --target wasm32-wasip2
+          rustc --version --verbose
+          cargo --version
+
+      - name: Restore Cargo and pinned-host build cache
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            .build/zeroclaw-target
+          key: zeroclaw-${{ runner.os }}-rust-1.97.1-${{ hashFiles('wit/UPSTREAM_REF') }}
+          restore-keys: |
+            zeroclaw-${{ runner.os }}-rust-1.97.1-
+
+      - name: Build exact pinned ZeroClaw host
+        run: ./scripts/install-pinned-zeroclaw.sh
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/.build/zeroclaw-target
+
+      - name: Install and execute all plugins; validate SOPs
+        run: ./scripts/host-smoke.sh

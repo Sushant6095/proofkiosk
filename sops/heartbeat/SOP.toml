@@ -1,7 +1,7 @@
 # ProofKiosk — heartbeat SOP (EXAMPLE)
 #
 # Confirm the device is still attesting. If the newest attestation on the device
-# address is older than max_silence_s, kiosk_watch (heartbeat mode) returns
+# address is older than configured heartbeat_max_silence_s, kiosk_watch returns
 # success == false and we alert the operator.
 #
 # Steps live in SOP.md under `## Steps`. Validate with:
@@ -13,9 +13,6 @@ description = "Alert the operator if the kiosk's attestation stream goes stale."
 version = "0.1.0"
 deterministic = true
 max_concurrent = 1
-# A tick arriving while the previous check is still running is collapsed onto it —
-# a watchdog gains nothing from queueing duplicate checks.
-admission_policy = "coalesce"
 
 [[triggers]]
 type = "cron"

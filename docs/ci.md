@@ -1,205 +1,92 @@
-# Plugin registry CI
+# ProofKiosk CI
 
-This repository uses a deterministic validation and publication pipeline for
-its standalone WebAssembly plugin crates. It checks source, metadata, WIT,
-component builds, and immutable packages. It does not run an LLM or post an
-automated review comment.
+The executable source of truth is [`.github/workflows/ci.yml`](../.github/workflows/ci.yml).
+Every push to `main` and every pull request runs the full gate; there are no path filters.
+Jobs receive only `contents: read` permission.
 
-The workflow files are authoritative for executable behavior. This document
-records their operator-facing contracts and the conditions for expanding the
-pipeline.
+## Build, test, and lint job
 
-## Required check contract
+The first Ubuntu 24.04 job has a 30-minute timeout and runs:
 
-`Validate Required Gate` is the only status check that the `main` ruleset
-requires. The display name is a frozen external contract: internal jobs may be
-added, removed, or reorganized without changing it. A planned rename must be
-coordinated with the ruleset so pull requests are never left waiting forever
-for a check name that no workflow emits.
+1. Node 24.10.0 setup, `npm ci`, syntax validation of the independent Solana Pay
+   transfer harness, 12 trusted handoff/claim tests, and `npm audit` at high severity.
+2. Rust 1.97.1 with Clippy, rustfmt, and `wasm32-wasip2`.
+3. `bash -n scripts/*.sh`, `scripts/host-infra-regression.sh`, and
+   `scripts/check-config.sh config/example.toml`.
+4. The 213 locked Rust tests: kiosk-core 80, kiosk-charge 19, kiosk-watch 76, and
+   kiosk-attest 38. RPC is mocked in these tests; they do not contact Devnet.
+5. Locked Clippy with warnings denied and rustfmt checks for all four crates.
+6. Release component builds and enforced size ceilings via `scripts/wasm-size.sh`.
+   Current gates are charge 220 KB / 250 KB, watch 390 KB / 400 KB, and attest
+   418 KB / 450 KB.
+7. Compiled-artifact inspection proving `kiosk-charge` imports zero `wasi:http`.
 
-After rollout, the ruleset must use strict required-status behavior so an
-immutability-sensitive pull request is revalidated against the current `main`.
-The GitHub Actions integration is not a ruleset bypass actor. A generated
-registry commit receives the same integration-owned gate context before its
-fast-forward push, as described under Publication. The administrator bypass is
-break-glass recovery, not the normal merge path. Review requirements remain
-deferred as described under Phase B.
+The Node and Rust suites contain 225 repository tests in total. The exact-host runtime
+test below is a separate integration gate, not folded into that count.
 
-Validation runs for every pull request without a path filter. This is
-load-bearing: GitHub leaves a path-filtered required check in an `Expected`
-state on a non-matching pull request. Documentation-only changes therefore
-still receive the gate, while component and packaging work can be skipped.
+## Exact pinned ZeroClaw job
 
-## Validation pipeline
+The second Ubuntu 24.04 job has a 45-minute timeout. It builds the exact commit in
+`wit/UPSTREAM_REF` with the checked-in upstream lockfile and
+`plugins-wasm-cranelift`, using a cache keyed by the Rust version and ZeroClaw pin. It
+then runs `scripts/host-smoke.sh`, which:
 
-`.github/workflows/validate.yml` runs on `pull_request`, manual dispatch, and
-as the reusable workflow called by publication. Pull-request jobs have only
-`contents: read` permission and receive no secrets.
+- uses an isolated temporary ZeroClaw config rather than the user's home config;
+- stages, installs, and loads all three component packages;
+- writes and reads the canonical natural-key `[[plugins.entries]]` config paths;
+- validates all three SOP contracts; and
+- transitively runs `scripts/exact-host-runtime-smoke.sh`.
 
-The job flow is:
+The exact-runtime test instantiates all three components through ZeroClaw's real
+`WasmTool` using the pinned source and lockfile. Deterministic local JSON-RPC fixtures
+exercise valid business paths for all three: charge returns `created`; watch makes two
+RPC calls and returns `paid`; attest reads a valid nonce account plus authenticated init
+history and returns an unsigned `signature_required` message while asserting
+`minContextSlot`. The test also proves host-injected config overrides caller-spoofed
+`__config`, rejects unknown model-facing fields, and sends the actual host-direct charge
+and paid-watch `ToolResult`s through trusted persistence, immutable economics/time
+validation, one exclusive claim, and duplicate-claim rejection in an isolated directory.
 
-```text
-fmt
-├─▶ changes ─▶ components (shards) ─▶ package ─┐
-├─▶ registry ──────────────────────────────────┤
-└─▶ wit-drift ─────────────────────────────────┴─▶ gate
+This test does **not** contact public Devnet, sign an attestation, call an actuator, or
+prove the headless SOP can dispatch ordinary plugin steps. `scripts/devnet-pay.mjs` is
+also separate evidence: it submits and independently validates a Solana Pay-shaped test
+transfer, but does not call `kiosk-watch`.
+
+## Pinned and unpinned trust
+
+- GitHub Actions are pinned by full commit SHA.
+- Node, Rust, the `wasm32-wasip2` target, ZeroClaw Git commit, upstream Cargo lockfile,
+  npm lockfile, and Solana Pay dependencies are pinned.
+- Cargo crate lockfiles are independent because this repository has four standalone
+  workspaces rather than one root Cargo workspace.
+- CI does not provision a Solana validator, a public RPC, a wallet, a physical sensor,
+  GPIO, or a signer. Those are manual/external integration boundaries.
+
+## Local equivalent
+
+From the repository root:
+
+```bash
+npm ci --ignore-scripts --no-audit --no-fund
+npm run test:handoff
+npm audit --omit=dev --audit-level=high
+
+for d in crates/kiosk-core plugins/kiosk-charge plugins/kiosk-watch plugins/kiosk-attest; do
+  (cd "$d" && cargo test --locked)
+  (cd "$d" && cargo clippy --locked --all-targets -- -D warnings)
+  (cd "$d" && cargo fmt --check)
+done
+
+bash -n scripts/*.sh
+bash scripts/host-infra-regression.sh
+./scripts/check-config.sh config/example.toml
+./scripts/wasm-size.sh
+./scripts/verify-no-network.sh
+./scripts/install-pinned-zeroclaw.sh
+export PATH="$PWD/.build/zeroclaw-install/bin:$PATH"
+./scripts/host-smoke.sh
 ```
 
-- `fmt` inspects every plugin and rejects whitespace errors in the
-  pull-request diff. New or changed Rust sources must be clean. Untouched
-  baseline formatting debt emits a warning derived from the merge-base, not a
-  maintained exception list. A plugin becomes strict automatically when it is
-  version-bumped and formatted; formatting an already published same-version
-  component is not allowed because it can change immutable WASM bytes.
-- `changes` selects changed plugins on pull requests. A change under `wit/`,
-  `tools/`, `.github/`, or to `registry.json` forces a full sweep. Non-PR
-  events also run a full sweep. A documentation-only pull request can produce
-  an empty matrix.
-- `registry` verifies that every plugin has the required crate and manifest
-  files, runs the registry-builder unit tests, requires source changes to leave
-  the generated `registry.json` release identities and history against the
-  base, allows only manifest-derived metadata refreshes, and checks generated
-  metadata against canonical `manifest.toml` data.
-- `wit-drift` fetches and cryptographically verifies the ZeroClaw Git object at
-  the revision in `wit/UPSTREAM_REF`, then
-  requires its `wit/v0` directory to be byte-identical to this repository's
-  vendored directory. Advance the pin and vendored WIT together in one
-  reviewed change; never point the pin at a merely compatible or partially
-  matching tree.
-- `components` uses bounded shards and validates every selected plugin with
-  locked host tests, host Clippy, `wasm32-wasip2` Clippy, and a release WASM
-  build. Tests and builds are always strict. A plugin changed by the current
-  source delta is also strict for both Clippy targets; untouched, pre-existing
-  Clippy debt remains visible as a warning derived from the delta rather than a
-  stored exception list. This is necessary because repairing a published
-  same-version component would violate its immutable package digest. Plugins
-  marked `registry = false` receive the same validation and are staged as
-  run-internal evidence, but the registry builder omits them from release
-  packages.
-- `package` merges the staged shard artifacts and performs a dry-run registry
-  build. The staged directory identities must exactly match the existing shard
-  matrix before packaging; missing, substituted, or unexpected components fail
-  closed. An unchanged historical identity reuses its immutable ledger entry
-  instead of assuming a newer compiler can reproduce old WASM. A plugin marked
-  as a changed release input by that same matrix may not reuse an existing
-  `<name>@<version>`; its canonical manifest version must advance. A vendored
-  WIT change marks every selected plugin as a release input, so a coordinated
-  ABI update cannot silently leave old packages behind. The resulting
-  `registry-dry-run` artifact is both available for maintainer inspection and
-  the sole input to publication; publication never creates a second archive
-  from the staged bytes. Generation requires a fresh output directory, and an
-  exact-set check rejects any file or digest not derived from newly added
-  ledger identities.
-- The gate always runs, aggregates shard results into the GitHub step summary,
-  and requires report identities and strictness to match that same shard matrix
-  exactly. It fails if any required dependency failed or was cancelled.
-  Legitimately skipped component work, such as a documentation-only change, is
-  a pass.
-
-The summary identifies the validated commit, selection mode, and plugin count,
-then reports tests, host and WASM Clippy, build status, and artifact size for
-each component. Artifact size is shown against the host cap, with a soft
-warning for unusually large components.
-
-## Reproducibility and cache policy
-
-The Rust toolchain and `wasm32-wasip2` target are pinned by the workflow rather
-than following `stable`. GitHub Actions are pinned by full commit SHA; their
-source of truth mirrors the corresponding actions in the
-`zeroclaw-labs/zeroclaw` workflows. Registry archives are generated and tested
-inside the immutable Python image named by `tools/ci/packager-image.txt`, with
-network access disabled and an explicit DEFLATE level. A golden archive digest
-detects changes in the complete serialization and compression path.
-
-Plugin crates are independent workspaces with independent lockfiles. Component
-jobs therefore use an explicit shared Cargo target directory and manual cache
-restore/save steps instead of assuming a single root workspace. Pull requests
-may restore caches, but only trusted `main` validation writes them.
-
-## Publication
-
-`.github/workflows/publish.yml` is the single pipeline for every push to `main`
-and has no path filter. Publication has no branch-selectable manual trigger:
-otherwise a branch could change its own workflow guard and request write
-permissions outside the trusted `main` path. Main-push runs are serialized
-without cancelling an active run. GitHub coalesces pending runs to the newest
-main revision; an active run also exits cleanly before publication if it has
-already been superseded.
-
-The first job calls the reusable validation workflow, which performs a full
-sweep of the merged commit. Publication downloads the `registry-dry-run` from
-that same run and uploads those exact package bytes; it neither rebuilds
-components nor repackages their output. The release base derives from
-`GITHUB_REPOSITORY`, so testing in a fork targets only that fork's release.
-
-Release assets use immutable `<name>-<version>.zip` identities. Uploads never
-clobber an existing asset: a retry skips an existing asset only after proving
-its bytes are identical, and every URL and digest in the complete generated
-ledger is checked before a registry commit. The registry builder refuses
-changed bytes for an existing identity. After upload, the workflow pushes the
-refreshed `registry.json` only when `main` still equals the validated source
-revision. It retries transient push failures but never rebases generated bytes
-across newer source.
-
-The required check applies to the generated child commit as well as ordinary
-pull requests. Before updating `main`, publication proves that the child has
-the validated source as its parent and changes only `registry.json`, uploads
-that exact commit to a run-scoped temporary branch, and uses the run-scoped
-GitHub Actions token to attach a successful `Validate Required Gate` check.
-Only then does it fast-forward the same commit to `main`; the temporary ref is
-removed on exit with a SHA-bound lease. Cleanup is best-effort if the runner is
-terminated, so a stale `registry-publication/*` branch may be deleted after
-confirming that it is not used by an active publication run. A workflow-token
-push does not recursively start a run.
-
-## Fork security boundary
-
-A fork pull request can modify its copy of the validation workflow and may be
-able to make an altered job report the frozen gate name. This is a residual
-risk while CODEOWNERS and mandatory reviews are intentionally deferred.
-
-The current mitigations limit impact rather than pretending the risk is gone:
-
-- pull-request validation is read-only and receives no repository secrets;
-- publication is unreachable from pull-request context;
-- a workflow or tooling change forces full component validation;
-- publication independently validates the merged `main` commit before writing
-  releases or the registry; and
-- reviewers must scrutinize changes under `.github/workflows/` and `tools/`.
-
-Do not replace this with `pull_request_target` plus execution of untrusted
-pull-request code; that would cross the repository's trust boundary.
-
-## Phase B graduation triggers
-
-The following work is deliberately deferred until its trigger is true.
-
-| Item | Trigger to build |
-| --- | --- |
-| Real-host compatibility job | The host runtime surface, including WebSocket and raw-socket behavior, is stable; the compatibility harness has moved out of `.context`; and instantiating every registry component with the `plugins-wasm-cranelift` host, including identity, webhook, and health checks, fits within 10 minutes. |
-| Ed25519 signing during publication | Host-side signature verification ships in `zeroclaw plugin install`; signing then uses a protected publication environment and an authorized key. |
-| WIT breaking-change automation | Upstream `wit/v0/.frozen` exists. Until then, byte equality against `wit/UPSTREAM_REF` is the stricter invariant. |
-| Nightly dependency audit | The initial validation and publication pipeline has proven stable; add a full sweep, per-lockfile audit, and deduplicated issue filing. |
-| CODEOWNERS and required reviews | A second active maintainer is available to satisfy and administer the review rule. |
-
-## Rollback and recovery
-
-- If validation logic regresses, revert the offending pipeline change while
-  preserving the frozen gate name. Use the administrator ruleset bypass only
-  as a documented break-glass action, then restore a working gate immediately.
-- If a WIT update is wrong, revert `wit/v0` and `wit/UPSTREAM_REF` as a pair to
-  the last byte-identical revision. Do not weaken the drift comparison.
-- Before publication, a plugin change can be reverted normally. After an asset
-  is published, never delete, overwrite, or reuse its version. Keep historical
-  assets and registry entries intact, revert host selection to a compatible
-  pinned version, and publish corrected bytes under a new version.
-- If upload succeeds but the registry push races with newer source, let the
-  newest main run reconcile it when that source still contains the version. If
-  newer source reverted the version, its uploaded asset remains permanently
-  reserved: restoring that version must reproduce the identical bytes, while a
-  different fix must use a new version. The retry verifies and reuses identical
-  assets; a same-name byte mismatch remains a hard failure. Never use clobbering
-  upload flags or hand-edit the generated ledger.
-- If a publication workflow itself is faulty, disable or revert that workflow
-  before retrying. Validation artifacts are evidence, not authorization to
-  mutate an existing release identity.
+The last command proves exact-host loading/execution at the scope above. A complete
+Devnet payment-verifier run and physical flow still require the operator procedure in
+[`DEVNET-E2E-RUNBOOK.md`](DEVNET-E2E-RUNBOOK.md).

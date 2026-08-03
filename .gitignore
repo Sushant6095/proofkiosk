@@ -6,6 +6,20 @@ staged/
 
 # scripts/devnet-setup.sh writes throwaway test keypairs and a validator ledger here.
 .devnet/
+.proofkiosk/
+node_modules/
+.playwright-mcp/
+artifacts/
+
+# Exact pinned ZeroClaw source/install used by scripts/install-pinned-zeroclaw.sh.
+.build/
 
 .DS_Store
 .vercel
+
+# Internal decision log — not part of the published submission.
+docs-local/
+# Internal research notes.
+research/
+superteam-*.md
+superteam-*.txt
