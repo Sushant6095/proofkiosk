@@ -159,20 +159,29 @@ runtime and will never load ProofKiosk. Phase 1 fixes it. Do not proceed past th
 
 <h2><span class="n">03</span>Phase 1 — build the plugin-capable pinned host</h2>
 
-<div class="cmd">export PROOFKIOSK_ROOT="$PWD"
-export ZEROCLAW_SRC="$PROOFKIOSK_ROOT/.build/zeroclaw-e112ce6b5ccd"
-export ZC_CONFIG_DIR="$PROOFKIOSK_ROOT/.devnet/zeroclaw-config"
-export ZC_AGENT="proofkiosk"
-mkdir -p "$PROOFKIOSK_ROOT/.devnet" "$ZC_CONFIG_DIR"
-zc() { zeroclaw --config-dir "$ZC_CONFIG_DIR" "$@"; }
+<div class="cmd">./scripts/install-pinned-zeroclaw.sh   <span class="c"># once per machine, ~10 min of cargo</span>
+source scripts/demo-env.sh             <span class="c"># ONCE PER TERMINAL — see the box below</span></div>
+<div class="does">The installer checks out <b>exact commit e112ce6b</b> (identifies as 0.8.2), builds
+with <code>--locked</code> + <code>plugins-wasm-cranelift</code>, and proves the result exposes
+<code>plugin</code>. <code>demo-env.sh</code> then puts that pinned binary <b>ahead of</b> the stock
+one on <code>PATH</code>, exports <code>PROOFKIOSK_ROOT</code> / <code>ZEROCLAW_SRC</code> /
+<code>ZC_CONFIG_DIR</code> / <code>ZC_AGENT</code> / <code>ITEM_ID</code>, defines the
+<code>zc()</code> helper, and re-loads <code>.devnet/payment.env</code> if setup already ran. It
+prints the resolved version so you can see at a glance you are on <b>0.8.2</b>, not 0.8.3.</div>
 
-./scripts/install-pinned-zeroclaw.sh
-export PATH="$PROOFKIOSK_ROOT/.build/zeroclaw-install/bin:$PATH"
-hash -r && zeroclaw --version && zeroclaw plugin --help</div>
-<div class="does">Checks out <b>exact commit e112ce6b</b> (identifies as 0.8.2), builds with
-<code>--locked</code> + <code>plugins-wasm-cranelift</code>, and proves the result exposes
-<code>plugin</code>. The <code>zc()</code> function pins every later command to an isolated,
-gitignored config dir so you never touch your real <code>~/.zeroclaw</code>. <b>~10 min of cargo.</b></div>
+<div class="box danger"><span class="lbl">The single most likely thing to go wrong</span>
+<code>zc</code> is a <b>shell function</b> and the pinned host is a <b>PATH edit</b>. Neither
+survives closing the terminal, opening a new tab, or a split pane. Symptom:
+<code>zsh: command not found: zc</code>, or <code>unrecognized subcommand 'plugin'</code> because
+<code>PATH</code> fell back to the stock 0.8.3 binary.<br>
+<b>Fix, every new terminal:</b> <code>cd</code> to the repo and
+<code>source scripts/demo-env.sh</code>. Nothing is lost — it is idempotent and re-reads any
+existing setup state.<br>
+<b>Do not paste the environment block out of this PDF.</b> Long names like
+<code>$PROOFKIOSK_ROOT</code> split across line breaks when copied from a PDF and arrive as
+<code>$PROOFKIOSK</code> + <code>ROOT</code>, which fails in confusing ways
+(<code>command not found: discover</code>, stray <code>sudo</code> usage errors). Sourcing the
+script is one short line precisely so this cannot happen.</div>
 
 <h2><span class="n">04</span>Phase 2 — prove the code before you show it</h2>
 
@@ -195,7 +204,8 @@ cargo clippy --all-targets -- -D warnings
 
 <h2><span class="n">05</span>Phase 3 — isolated agent, then install the plugins</h2>
 
-<div class="cmd">zc quickstart --agent "$ZC_AGENT"   <span class="c"># interactive: pick provider, paste key at the masked prompt</span>
+<div class="cmd"><span class="c"># new terminal? source scripts/demo-env.sh first — every phase below assumes it</span>
+zc quickstart --agent "$ZC_AGENT"   <span class="c"># interactive: pick provider, paste key at the masked prompt</span>
 zc self-test --quick
 
 zc plugin install "$PROOFKIOSK_ROOT/staged/kiosk-charge"
