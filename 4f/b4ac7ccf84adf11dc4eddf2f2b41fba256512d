@@ -1,0 +1,19 @@
+artifacts/e2e-guide.html
+  s_d4e40183daad6c::t_590033dd5e1b6f 359,366-402,421,434-435
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "4fb4ac7ccf84adf11dc4eddf2f2b41fba256512d",
+  "prompts": {},
+  "sessions": {
+    "s_d4e40183daad6c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5a5651de-86c4-4320-b1a9-751a8456ce34",
+        "model": "claude-opus-5"
+      },
+      "human_author": "sushant6095 <sushant.jain@vyapar.com>"
+    }
+  }
+}
