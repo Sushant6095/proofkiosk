@@ -47,8 +47,21 @@ fn item_charge_builds_solana_pay_url() {
     assert!(out.url.contains(&format!("spl-token={DEFAULT_USDC_MINT}")));
     assert!(out.url.contains(&format!("reference={}", out.reference)));
     assert!(out.url.contains("label=Kiosk%2001"));
-    assert!(out.url.contains("memo=cold_drink"));
+    assert!(out.url.contains("memo=%7B"));
+    assert!(out.url.contains("PKPAY1"));
+    assert!(out.url.contains(&out.reference));
     assert_eq!(out.amount, "1.5");
+    assert_eq!(out.created_at_ms, 0);
+    let machine: serde_json::Value = serde_json::from_str(&out.machine_output()).unwrap();
+    assert_eq!(machine["v"], 1);
+    assert_eq!(machine["status"], "created");
+    assert_eq!(machine["actuation_eligible"], true);
+    assert_eq!(machine["reference"], out.reference);
+    assert_eq!(machine["item_id"], "cold_drink");
+    assert_eq!(machine["amount"], "1.5");
+    assert_eq!(machine["recipient"], MERCHANT);
+    assert_eq!(machine["mint"], DEFAULT_USDC_MINT);
+    assert_eq!(machine["url"], out.url);
 }
 
 #[test]
@@ -72,6 +85,56 @@ fn generalizes_to_any_spl_mint_not_just_usdc() {
     )
     .unwrap();
     assert!(out.url.contains(&format!("spl-token={other_mint}")));
+}
+
+#[test]
+fn non_six_decimal_mint_is_validated_and_rendered_canonically() {
+    let cfg = ChargeConfig::from_section(&section(&[
+        ("merchant_address", MERCHANT),
+        ("usdc_mint", "So11111111111111111111111111111111111111112"),
+        ("token_decimals", "9"),
+        ("price_list", "credit:001.500000000, dust:0.000000001"),
+    ]))
+    .unwrap();
+    assert_eq!(cfg.token_decimals, 9);
+    let out = execute_charge(
+        &ChargeArgs {
+            item_id: Some("credit".into()),
+            ..Default::default()
+        },
+        &cfg,
+        REF32,
+        0,
+    )
+    .unwrap();
+    assert!(out.url.contains("amount=1.5"), "{}", out.url);
+}
+
+#[test]
+fn invalid_decimal_policy_or_catalog_price_fails_at_config_load() {
+    for pairs in [
+        vec![("merchant_address", MERCHANT), ("token_decimals", "19")],
+        vec![("merchant_address", MERCHANT), ("token_decimals", "wat")],
+        vec![
+            ("merchant_address", MERCHANT),
+            ("token_decimals", "2"),
+            ("price_list", "item:1.001"),
+        ],
+        vec![
+            ("merchant_address", MERCHANT),
+            ("max_amount_usdc", "10"),
+            ("price_list", "item:11"),
+        ],
+        vec![("merchant_address", MERCHANT), ("price_list", "item:.5")],
+        vec![("merchant_address", MERCHANT), ("price_list", "item:1.")],
+        vec![
+            ("merchant_address", MERCHANT),
+            ("token_decimals", "18"),
+            ("price_list", "item:100"),
+        ],
+    ] {
+        assert!(ChargeConfig::from_section(&section(&pairs)).is_err());
+    }
 }
 
 #[test]
@@ -132,6 +195,21 @@ fn free_amount_within_cap_ok() {
     .unwrap();
     assert!(out.url.contains("amount=2.25"));
     assert!(out.item.is_none());
+    let machine: serde_json::Value = serde_json::from_str(&out.machine_output()).unwrap();
+    assert_eq!(machine["actuation_eligible"], false);
+    assert!(machine["item_id"].is_null());
+}
+
+#[test]
+fn duplicate_or_unbounded_operator_config_is_rejected() {
+    for pairs in [
+        vec![("merchant_address", MERCHANT), ("price_list", "a:1,a:2")],
+        vec![("merchant_address", MERCHANT), ("label", &"x".repeat(65))],
+        vec![("merchant_address", MERCHANT), ("max_amount_usdc", "inf")],
+        vec![("merchant_address", MERCHANT), ("max_amount_usdc", ".5")],
+    ] {
+        assert!(ChargeConfig::from_section(&section(&pairs)).is_err());
+    }
 }
 
 #[test]

@@ -24,9 +24,8 @@ mod component {
 
     use std::collections::HashMap;
 
-    use crate::attest::{execute_attest, AttestArgs, AttestConfig};
+    use crate::attest::{execute_attest, unix_timestamp, AttestArgs, AttestConfig};
     use kiosk_core::rpc::WakiTransport;
-    use kiosk_core::shape;
 
     use exports::zeroclaw::plugin::plugin_info::Guest as PluginInfo;
     use exports::zeroclaw::plugin::tool::{Guest as Tool, ToolResult};
@@ -46,7 +45,6 @@ mod component {
         kind: Option<String>,
         metric: Option<String>,
         value: Option<f64>,
-        ts: Option<u64>,
         event: Option<String>,
         payment_sig: Option<String>,
         item: Option<String>,
@@ -91,7 +89,6 @@ mod component {
                     "kind": { "type": "string", "enum": ["reading", "event", "fulfillment"], "description": "Attestation kind. Default `reading`." },
                     "metric": { "type": "string", "description": "Reading: metric name (must be in the operator allowlist), e.g. `temp_c`." },
                     "value": { "type": "number", "description": "Reading: numeric value, bounded by the operator's allowlist." },
-                    "ts": { "type": "integer", "description": "Unix seconds for the record; defaults to now." },
                     "event": { "type": "string", "description": "Event: a short event label, e.g. `sale`." },
                     "payment_sig": { "type": "string", "description": "Event: the payment signature this event attests to." },
                     "item": { "type": "string", "description": "Event/fulfillment: the item id involved." },
@@ -140,17 +137,23 @@ mod component {
                 kind: parsed.kind,
                 metric: parsed.metric,
                 value: parsed.value,
-                ts: parsed.ts,
                 event: parsed.event,
                 payment_sig: parsed.payment_sig,
                 item: parsed.item,
                 reference: parsed.reference,
             };
 
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0);
+            let now = match unix_timestamp(std::time::SystemTime::now()) {
+                Ok(now) => now,
+                Err(e) => {
+                    emit(
+                        PluginAction::Fail,
+                        Some(PluginOutcome::Failure),
+                        "system clock rejected",
+                    );
+                    return Ok(fail(e.to_string()));
+                }
+            };
             let transport = WakiTransport::new(cfg.rpc_url.clone());
 
             match execute_attest(&attest_args, &cfg, transport, now) {
@@ -160,11 +163,10 @@ mod component {
                         Some(PluginOutcome::Success),
                         "attestation built",
                     );
-                    // Summary is token-budgeted; the base64 tx is bounded and small.
-                    let output = shape::clamp(
-                        &format!("{}\nunsigned_tx_base64={}", out.summary, out.tx_base64),
-                        shape::DEFAULT_BUDGET_TOKENS,
-                    );
+                    // Structured JSON keeps the opaque signing payload intact.
+                    // Clamping the whole string can corrupt base64 while still
+                    // returning success; size is bounded in the pure core.
+                    let output = out.machine_output();
                     Ok(ToolResult {
                         success: true,
                         output,
@@ -185,11 +187,10 @@ mod component {
 
     /// Reject any model-supplied key outside the declared schema.
     fn strict_check(raw: &str) -> Result<(), String> {
-        const ALLOWED: [&str; 9] = [
+        const ALLOWED: [&str; 8] = [
             "kind",
             "metric",
             "value",
-            "ts",
             "event",
             "payment_sig",
             "item",

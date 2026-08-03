@@ -97,6 +97,17 @@ pub fn parse_response(raw: &str) -> Result<Value, RpcError> {
     let v: Value =
         serde_json::from_str(raw).map_err(|e| RpcError::Decode(format!("not JSON: {e}")))?;
 
+    if v.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
+        return Err(RpcError::Decode(
+            "response is not a JSON-RPC 2.0 envelope".into(),
+        ));
+    }
+    if v.get("id").and_then(Value::as_u64) != Some(1) {
+        return Err(RpcError::Decode(
+            "response id does not match request id 1".into(),
+        ));
+    }
+
     if let Some(err) = v.get("error") {
         let code = err.get("code").and_then(Value::as_i64).unwrap_or(0);
         let message = err
@@ -134,15 +145,39 @@ impl WakiTransport {
 #[cfg(all(target_family = "wasm", feature = "http"))]
 impl RpcTransport for WakiTransport {
     fn send(&self, request_body: &str) -> Result<String, RpcError> {
+        use std::time::Duration;
+
+        const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+        const READ_CHUNK_BYTES: u64 = 64 * 1024;
+        const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
+
         let resp = waki::Client::new()
             .post(&self.url)
             .header("Content-Type", "application/json")
             .body(request_body.as_bytes().to_vec())
+            .connect_timeout(CONNECT_TIMEOUT)
             .send()
             .map_err(|e| RpcError::Transport(format!("{e:?}")))?;
-        let bytes = resp
-            .body()
-            .map_err(|e| RpcError::Transport(format!("read body: {e:?}")))?;
+        let status = resp.status_code();
+        if !(200..300).contains(&status) {
+            return Err(RpcError::Transport(format!(
+                "rpc returned HTTP status {status}"
+            )));
+        }
+
+        let mut bytes = Vec::new();
+        loop {
+            let chunk = resp
+                .chunk(READ_CHUNK_BYTES)
+                .map_err(|e| RpcError::Transport(format!("read body: {e:?}")))?;
+            let Some(chunk) = chunk else { break };
+            if bytes.len().saturating_add(chunk.len()) > MAX_RESPONSE_BYTES {
+                return Err(RpcError::Transport(format!(
+                    "rpc response exceeded {MAX_RESPONSE_BYTES} bytes"
+                )));
+            }
+            bytes.extend_from_slice(&chunk);
+        }
         String::from_utf8(bytes).map_err(|e| RpcError::Decode(format!("body not utf-8: {e}")))
     }
 }
@@ -194,8 +229,24 @@ mod tests {
     }
 
     #[test]
+    fn response_requires_matching_jsonrpc_version_and_id() {
+        assert!(matches!(
+            parse_response(r#"{"jsonrpc":"1.0","id":1,"result":{}}"#),
+            Err(RpcError::Decode(_))
+        ));
+        assert!(matches!(
+            parse_response(r#"{"jsonrpc":"2.0","id":2,"result":{}}"#),
+            Err(RpcError::Decode(_))
+        ));
+        assert!(matches!(
+            parse_response(r#"{"id":1,"result":{}}"#),
+            Err(RpcError::Decode(_))
+        ));
+    }
+
+    #[test]
     fn client_sends_the_method_the_caller_asked_for() {
-        let mock = MockTransport::returning(r#"{"result":"ok"}"#);
+        let mock = MockTransport::returning(r#"{"jsonrpc":"2.0","id":1,"result":"ok"}"#);
         let client = RpcClient::new(mock);
         client.call("getBalance", json!(["wallet"])).unwrap();
         let sent = client.transport.last_request.borrow().clone().unwrap();
@@ -235,9 +286,9 @@ mod tests {
     fn result_can_be_any_shape() {
         // Solana returns arrays, objects, strings, nulls depending on method.
         for raw in [
-            r#"{"result":[1,2,3]}"#,
-            r#"{"result":"finalized"}"#,
-            r#"{"result":null}"#,
+            r#"{"jsonrpc":"2.0","id":1,"result":[1,2,3]}"#,
+            r#"{"jsonrpc":"2.0","id":1,"result":"finalized"}"#,
+            r#"{"jsonrpc":"2.0","id":1,"result":null}"#,
         ] {
             assert!(parse_response(raw).is_ok(), "should accept {raw}");
         }

@@ -35,7 +35,7 @@ proptest! {
             format!("{whole}.{frac:06}").trim_end_matches('0').to_string()
         };
         let req = TransferRequest::new(
-            MERCHANT, &amount, 6, 300.0, None, None, None, None, None,
+            MERCHANT, &amount, 6, "300", None, None, None, None, None,
         ).expect("valid amount must build");
         let url = req.url();
         // Extract the amount= value and confirm it equals `units` base units.
