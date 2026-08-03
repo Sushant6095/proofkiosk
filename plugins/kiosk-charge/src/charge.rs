@@ -7,26 +7,36 @@
 
 use std::collections::HashMap;
 
-use kiosk_core::{b58, pay::TransferRequest, shape};
+use kiosk_core::{
+    b58,
+    memo::PAYMENT_TAG,
+    pay::{canonicalize_amount, validate_amount, TransferRequest},
+    shape,
+};
+use serde_json::json;
 
 /// Mainnet USDC mint, the shipped default. Operators override in config
 /// (e.g. devnet USDC) — never the model.
 pub const DEFAULT_USDC_MINT: &str = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
-pub const DEFAULT_MAX_AMOUNT: f64 = 100.0;
+pub const DEFAULT_MAX_AMOUNT: &str = "100";
 /// Wallet-visible note length, in CHARACTERS. Bounded so a long note cannot
 /// crowd the token budget; counted in characters so truncation can never split
 /// a UTF-8 code point.
 pub const NOTE_MAX_CHARS: usize = 64;
+pub const LABEL_MAX_CHARS: usize = 64;
+pub const PRICE_LIST_MAX_BYTES: usize = 4_096;
 pub const USDC_DECIMALS: u8 = 6;
+const MAX_MINT_DECIMALS: u8 = 18;
 
 #[derive(Debug)]
 pub struct ChargeConfig {
     pub merchant_address: String,
     pub usdc_mint: String,
+    pub token_decimals: u8,
     /// item id -> decimal amount string, parsed from `price_list`
     /// (`"cold_drink:1.5, snack:0.75"`).
     pub price_list: HashMap<String, String>,
-    pub max_amount: f64,
+    pub max_amount: String,
     pub label: Option<String>,
     /// Optional cosmetic fiat display (e.g. "BRL") shown alongside the USDC
     /// amount. The on-chain amount is ALWAYS the USDC figure; this is a static,
@@ -78,23 +88,62 @@ impl ChargeConfig {
                 "usdc_mint is not a valid pubkey".into(),
             ));
         }
+        let token_decimals = section
+            .get("token_decimals")
+            .filter(|value| !value.is_empty())
+            .map(|value| {
+                value.parse::<u8>().map_err(|_| {
+                    ChargeError::Config("token_decimals must be an integer from 0 to 18".into())
+                })
+            })
+            .transpose()?
+            .unwrap_or(USDC_DECIMALS);
+        if token_decimals > MAX_MINT_DECIMALS {
+            return Err(ChargeError::Config(format!(
+                "token_decimals must be between 0 and {MAX_MINT_DECIMALS}"
+            )));
+        }
+        let max_amount = canonicalize_amount(
+            section
+                .get("max_amount_usdc")
+                .map(String::as_str)
+                .unwrap_or(DEFAULT_MAX_AMOUNT),
+            token_decimals,
+        )
+        .map_err(|error| ChargeError::Config(format!("invalid max_amount_usdc: {error}")))?;
         let mut price_list = HashMap::new();
         if let Some(raw) = section.get("price_list") {
+            if raw.len() > PRICE_LIST_MAX_BYTES {
+                return Err(ChargeError::Config(format!(
+                    "price_list exceeds {PRICE_LIST_MAX_BYTES} bytes"
+                )));
+            }
             for entry in raw.split(',').map(str::trim).filter(|e| !e.is_empty()) {
                 let (item, amount) = entry
                     .split_once(':')
                     .ok_or_else(|| ChargeError::Config(format!("bad price entry `{entry}`")))?;
-                price_list.insert(item.trim().to_string(), amount.trim().to_string());
+                let item = item.trim();
+                if item.is_empty()
+                    || item.len() > 64
+                    || !item
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+                {
+                    return Err(ChargeError::Config(
+                        "price-list item ids must use 1 to 64 ASCII letters, digits, `_`, or `-`"
+                            .into(),
+                    ));
+                }
+                let amount = validate_amount(amount.trim(), token_decimals, &max_amount).map_err(
+                    |error| ChargeError::Config(format!("invalid price for `{item}`: {error}")),
+                )?;
+                if price_list.insert(item.to_string(), amount).is_some() {
+                    return Err(ChargeError::Config(format!(
+                        "duplicate price-list item `{item}`"
+                    )));
+                }
             }
         }
-        let max_amount = match section.get("max_amount_usdc") {
-            Some(v) => v
-                .parse::<f64>()
-                .ok()
-                .filter(|m| *m > 0.0)
-                .ok_or_else(|| ChargeError::Config("max_amount_usdc must be > 0".into()))?,
-            None => DEFAULT_MAX_AMOUNT,
-        };
         let display_currency = section
             .get("display_currency")
             .filter(|v| !v.is_empty())
@@ -110,12 +159,22 @@ impl ChargeConfig {
             ),
             None => None,
         };
+        let label = section.get("label").filter(|v| !v.is_empty()).cloned();
+        if label
+            .as_ref()
+            .is_some_and(|value| value.chars().count() > LABEL_MAX_CHARS)
+        {
+            return Err(ChargeError::Config(format!(
+                "label exceeds {LABEL_MAX_CHARS} characters"
+            )));
+        }
         Ok(Self {
             merchant_address,
             usdc_mint,
+            token_decimals,
             price_list,
             max_amount,
-            label: section.get("label").filter(|v| !v.is_empty()).cloned(),
+            label,
             display_currency,
             display_rate,
         })
@@ -150,8 +209,34 @@ pub struct ChargeOutput {
     pub reference: String,
     pub amount: String,
     pub item: Option<String>,
+    pub recipient: String,
+    pub mint: String,
+    pub created_at_ms: u64,
     /// Human/LLM-facing summary, token-budgeted.
     pub summary: String,
+}
+
+impl ChargeOutput {
+    /// Versioned output for deterministic routing and order handoff. The human
+    /// summary remains available as `message`, while every security-relevant
+    /// field is separately machine-readable.
+    pub fn machine_output(&self) -> String {
+        json!({
+            "v": 1,
+            "success": true,
+            "status": "created",
+            "actuation_eligible": self.item.is_some(),
+            "reference": self.reference,
+            "item_id": self.item,
+            "amount": self.amount,
+            "recipient": self.recipient,
+            "mint": self.mint,
+            "created_at_ms": self.created_at_ms,
+            "url": self.url,
+            "message": self.summary,
+        })
+        .to_string()
+    }
 }
 
 /// Build a charge. `reference32` and `now_ms` are supplied by the shim (or the
@@ -160,7 +245,7 @@ pub fn execute_charge(
     args: &ChargeArgs,
     cfg: &ChargeConfig,
     reference32: [u8; 32],
-    _now_ms: u64,
+    now_ms: u64,
 ) -> Result<ChargeOutput, ChargeError> {
     let (amount, item): (String, Option<String>) = match (&args.item_id, &args.amount_usdc) {
         (Some(item), _) => {
@@ -182,16 +267,29 @@ pub fn execute_charge(
         .note
         .as_deref()
         .map(|n| n.chars().take(NOTE_MAX_CHARS).collect::<String>());
+    // Bind the on-chain transfer to both this unguessable reference and the
+    // quoted item. kiosk-watch requires this exact versioned claim, so one
+    // payment carrying several reference accounts cannot satisfy several
+    // same-priced orders, and an equal-priced SKU cannot be swapped at watch.
+    let payment_memo = item.as_ref().map(|item_id| {
+        json!({
+            "v": 1,
+            "tag": PAYMENT_TAG,
+            "ref": reference,
+            "item": item_id,
+        })
+        .to_string()
+    });
     let request = TransferRequest::new(
         &cfg.merchant_address,
         &amount,
-        USDC_DECIMALS,
-        cfg.max_amount,
+        cfg.token_decimals,
+        &cfg.max_amount,
         Some(&cfg.usdc_mint),
         Some(&reference),
         cfg.label.as_deref(),
         note.as_deref(),
-        item.as_deref(),
+        payment_memo.as_deref(),
     )
     .map_err(|e| ChargeError::Args(e.to_string()))?;
 
@@ -219,6 +317,9 @@ pub fn execute_charge(
         reference,
         amount,
         item,
+        recipient: cfg.merchant_address.clone(),
+        mint: cfg.usdc_mint.clone(),
+        created_at_ms: now_ms,
         summary,
     })
 }

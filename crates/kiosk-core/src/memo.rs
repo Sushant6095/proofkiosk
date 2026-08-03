@@ -17,6 +17,10 @@ pub const MEMO_PROGRAM_ID_B58: &str = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfc
 /// marker to be reinterpreted under new rules.
 pub const FULFILLMENT_TAG: &str = "PKFUL1";
 
+/// Versioned Solana Pay memo tag binding one payment transaction to exactly
+/// one ProofKiosk reference and catalog item.
+pub const PAYMENT_TAG: &str = "PKPAY1";
+
 /// One account reference within an instruction.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AccountMeta {

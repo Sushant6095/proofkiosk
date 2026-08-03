@@ -48,9 +48,6 @@ mod component {
         mode: Option<String>,
         reference: Option<String>,
         item_id: Option<String>,
-        window_s: Option<u64>,
-        device_address: Option<String>,
-        max_silence_s: Option<u64>,
         #[serde(rename = "__config")]
         config: HashMap<String, String>,
     }
@@ -73,14 +70,14 @@ mod component {
             "Check whether a kiosk payment has been received on-chain before delivering an item. \
              Pass the `reference` and the `item_id` from the charge; returns success=true ONLY \
              when a Solana payment of that item's configured USDC price to the operator's address \
-             has landed at the configured finality — deliver only then. success=false means \
-             pending, expired, or a mismatch (do not deliver). Set mode=\"heartbeat\" with \
-             device_address and max_silence_s to instead check the device's attestation freshness. \
-             The price, recipient, mint, and RPC endpoint are all fixed by operator config and \
-             cannot be set here — there is no amount argument. Charges created for a free amount \
+             has landed at the configured finality. A paid result is not actuator authorization: \
+             a trusted driver must match it to the persisted quote and claim that order atomically. \
+             success=false means pending or mismatch (do not deliver). Set mode=\"heartbeat\" to instead \
+             check the configured device's authenticated attestation freshness. The price, recipient, \
+             mint, RPC endpoint, payment window, and heartbeat threshold are fixed by operator config \
+             and cannot be set here — there is no amount or time-policy argument. Charges created for a free amount \
              rather than a catalog item are invoicing-only and cannot be verified here. State the \
-             result plainly (paid / still pending / mismatch) before any downstream action such as \
-             releasing an item."
+             result plainly (paid / still pending / mismatch) before any downstream action."
                 .to_string()
         }
 
@@ -100,18 +97,6 @@ mod component {
                     "item_id": {
                         "type": "string",
                         "description": "Payment mode: the item id this charge was created for. Its price is read from operator config; there is no amount argument."
-                    },
-                    "window_s": {
-                        "type": "integer",
-                        "description": "Payment mode: acceptance window in seconds; an older matching payment is Expired."
-                    },
-                    "device_address": {
-                        "type": "string",
-                        "description": "Heartbeat mode: the device attestation address to scan."
-                    },
-                    "max_silence_s": {
-                        "type": "integer",
-                        "description": "Heartbeat mode: max seconds since the newest attestation before it is Stale."
                     }
                 },
                 "additionalProperties": false
@@ -160,20 +145,24 @@ mod component {
                 mode: parsed.mode.clone(),
                 reference: parsed.reference,
                 item_id: parsed.item_id,
-                window_s: parsed.window_s,
-                device_address: parsed.device_address,
-                max_silence_s: parsed.max_silence_s,
             };
 
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0);
+            let now = match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+                Ok(duration) => duration.as_secs(),
+                Err(_) => {
+                    emit(
+                        PluginAction::Fail,
+                        Some(PluginOutcome::Failure),
+                        "host clock rejected",
+                    );
+                    return Ok(fail("host clock is before the Unix epoch".into()));
+                }
+            };
             let transport = WakiTransport::new(cfg.rpc_url.clone());
 
             let heartbeat_mode = parsed.mode.as_deref() == Some("heartbeat");
             if heartbeat_mode {
-                match verify_heartbeat(&watch_args, &cfg, transport, now) {
+                match verify_heartbeat(&cfg, transport, now) {
                     Ok(h) => Ok(finish_heartbeat(h)),
                     Err(e) => Ok(fail_or_negative(e)),
                 }
@@ -202,7 +191,7 @@ mod component {
         );
         ToolResult {
             success: paid,
-            output: v.summary(),
+            output: v.machine_output(),
             error: None,
         }
     }
@@ -221,7 +210,7 @@ mod component {
         );
         ToolResult {
             success: live,
-            output: h.summary(),
+            output: h.machine_output(),
             error: None,
         }
     }
@@ -239,15 +228,7 @@ mod component {
 
     /// Reject any model-supplied key outside the declared schema.
     fn strict_check(raw: &str) -> Result<(), String> {
-        const ALLOWED: [&str; 7] = [
-            "mode",
-            "reference",
-            "item_id",
-            "window_s",
-            "device_address",
-            "max_silence_s",
-            "__config",
-        ];
+        const ALLOWED: [&str; 4] = ["mode", "reference", "item_id", "__config"];
         let v: serde_json::Value =
             serde_json::from_str(raw).map_err(|e| format!("invalid arguments: {e}"))?;
         if let Some(obj) = v.as_object() {

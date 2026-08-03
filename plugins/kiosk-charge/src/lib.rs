@@ -135,10 +135,17 @@ mod component {
                 return Ok(fail(e));
             }
 
-            let now_ms = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_millis() as u64)
-                .unwrap_or(0);
+            let now_ms = match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+                Ok(duration) => u64::try_from(duration.as_millis()).unwrap_or(u64::MAX),
+                Err(_) => {
+                    emit(
+                        PluginAction::Fail,
+                        PluginOutcome::Failure,
+                        "host clock rejected",
+                    );
+                    return Ok(fail("host clock is before the Unix epoch".into()));
+                }
+            };
             let reference = match reference_bytes() {
                 Ok(r) => r,
                 Err(e) => {
@@ -155,7 +162,7 @@ mod component {
                     );
                     Ok(ToolResult {
                         success: true,
-                        output: out.summary,
+                        output: out.machine_output(),
                         error: None,
                     })
                 }

@@ -40,7 +40,8 @@ pub fn decode(input: &str) -> Option<Vec<u8>> {
         return Some(Vec::new());
     }
     let mut out = Vec::with_capacity(bytes.len() / 4 * 3);
-    for chunk in bytes.chunks(4) {
+    let last_chunk = bytes.len() / 4 - 1;
+    for (chunk_index, chunk) in bytes.chunks(4).enumerate() {
         let mut vals = [0u32; 4];
         let mut pad = 0;
         for (i, &c) in chunk.iter().enumerate() {
@@ -59,6 +60,13 @@ pub fn decode(input: &str) -> Option<Vec<u8>> {
             }
         }
         let n = (vals[0] << 18) | (vals[1] << 12) | (vals[2] << 6) | vals[3];
+        if pad > 0 && chunk_index != last_chunk {
+            return None;
+        }
+        // RFC 4648 requires the unused low bits before padding to be zero.
+        if (pad == 2 && vals[1] & 0x0f != 0) || (pad == 1 && vals[2] & 0x03 != 0) {
+            return None;
+        }
         out.push((n >> 16) as u8);
         if pad < 2 {
             out.push((n >> 8) as u8);
@@ -127,7 +135,9 @@ mod tests {
         assert!(decode("====").is_none()); // all padding
         assert!(decode("Zm9v!===").is_none()); // invalid char / bad shape
         assert!(decode("Zm9 v").is_none()); // space invalid
-        assert!(decode("Zg==Zg==").is_some()); // two valid quanta OK
+        assert!(decode("Zg==Zg==").is_none()); // padding is final-quartet only
+        assert!(decode("Zh==").is_none()); // non-zero unused pad bits
+        assert!(decode("Zm9=").is_none()); // non-zero unused pad bits
         assert!(decode("=AAA").is_none()); // leading pad
     }
 }

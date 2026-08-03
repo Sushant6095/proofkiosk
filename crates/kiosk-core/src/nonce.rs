@@ -20,6 +20,7 @@ use crate::{b58, b64};
 pub const RECENT_BLOCKHASHES_SYSVAR_B58: &str = "SysvarRecentB1ockHashes11111111111111111111";
 /// System program id (32 zero bytes).
 pub const SYSTEM_PROGRAM_ID: [u8; 32] = [0u8; 32];
+pub const SYSTEM_PROGRAM_ID_B58: &str = "11111111111111111111111111111111";
 /// SystemInstruction::AdvanceNonceAccount discriminant (u32 LE).
 const ADVANCE_NONCE_DISCRIMINANT: [u8; 4] = [4, 0, 0, 0];
 const NONCE_ACCOUNT_LEN: usize = 80;
@@ -36,7 +37,7 @@ pub struct NonceAccount {
 /// exact expected length — fail closed.
 pub fn parse_nonce_account(base64_data: &str) -> Option<NonceAccount> {
     let bytes = b64::decode(base64_data)?;
-    if bytes.len() < NONCE_ACCOUNT_LEN {
+    if bytes.len() != NONCE_ACCOUNT_LEN {
         return None;
     }
     let version = u32::from_le_bytes(bytes[0..4].try_into().ok()?);
@@ -117,6 +118,7 @@ mod tests {
         assert!(parse_nonce_account(&nonce_blob(1, 0, authority, bh)).is_none()); // uninitialized
         assert!(parse_nonce_account(&nonce_blob(0, 1, authority, bh)).is_none()); // legacy
         assert!(parse_nonce_account(&b64::encode(&[0u8; 40])).is_none()); // too short
+        assert!(parse_nonce_account(&b64::encode(&[0u8; 81])).is_none()); // too long
         assert!(parse_nonce_account("not base64!!").is_none());
     }
 

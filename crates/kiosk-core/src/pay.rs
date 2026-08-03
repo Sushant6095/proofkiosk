@@ -49,7 +49,7 @@ impl TransferRequest {
         recipient: &str,
         amount_str: &str,
         decimals: u8,
-        max_amount: f64,
+        max_amount: &str,
         spl_token: Option<&str>,
         reference: Option<&str>,
         label: Option<&str>,
@@ -108,21 +108,25 @@ impl TransferRequest {
     }
 }
 
-/// Parse, bound and canonicalize a decimal amount without floats drifting:
-/// max `decimals` fraction digits, > 0, <= max_amount, no scientific notation.
-fn validate_amount(s: &str, decimals: u8, max_amount: f64) -> Result<String, PayError> {
+/// Parse and canonicalize a token amount with exact fixed-point arithmetic.
+/// The accepted grammar is `digits` or `digits.digits`; the value must be
+/// positive, fit the mint's decimal scale, and fit Solana's `u64` raw amount.
+pub fn canonicalize_amount(s: &str, decimals: u8) -> Result<String, PayError> {
     let s = s.trim();
     if s.is_empty() || s.starts_with('+') || s.starts_with('-') {
         return Err(PayError::BadAmount(
             "must be a plain positive decimal".into(),
         ));
     }
-    let mut parts = s.splitn(2, '.');
-    let int = parts.next().unwrap_or("");
-    let frac = parts.next().unwrap_or("");
-    if int.is_empty() && frac.is_empty() {
-        return Err(PayError::BadAmount("empty".into()));
-    }
+    let (int, frac) = match s.split_once('.') {
+        Some((int, frac)) if !int.is_empty() && !frac.is_empty() => (int, frac),
+        Some(_) => {
+            return Err(PayError::BadAmount(
+                "must use digits or digits.digits".into(),
+            ))
+        }
+        None => (s, ""),
+    };
     if !int.chars().all(|c| c.is_ascii_digit()) || !frac.chars().all(|c| c.is_ascii_digit()) {
         return Err(PayError::BadAmount("non-digit characters".into()));
     }
@@ -131,19 +135,10 @@ fn validate_amount(s: &str, decimals: u8, max_amount: f64) -> Result<String, Pay
             "more than {decimals} decimal places"
         )));
     }
-    let value: f64 = s
-        .parse()
-        .map_err(|_| PayError::BadAmount("unparseable".into()))?;
-    // Reject NaN explicitly as well as non-positive: a money amount must be a
-    // finite positive number. (Digits-only parsing upstream already excludes
-    // NaN/inf; this stays defensive.)
-    if value.is_nan() || value <= 0.0 {
+    let units = amount_to_base_units(s, decimals)
+        .ok_or_else(|| PayError::BadAmount("does not fit Solana's u64 token amount".into()))?;
+    if units == 0 {
         return Err(PayError::BadAmount("must be greater than zero".into()));
-    }
-    if value > max_amount {
-        return Err(PayError::BadAmount(format!(
-            "exceeds operator cap of {max_amount}"
-        )));
     }
     // Canonical form: strip leading zeros (keep one) and trailing fraction zeros.
     let int_norm = int.trim_start_matches('0');
@@ -154,6 +149,49 @@ fn validate_amount(s: &str, decimals: u8, max_amount: f64) -> Result<String, Pay
     } else {
         format!("{int_norm}.{frac_norm}")
     })
+}
+
+/// Parse, bound and canonicalize an amount without floating-point comparison.
+pub fn validate_amount(s: &str, decimals: u8, max_amount: &str) -> Result<String, PayError> {
+    let amount = canonicalize_amount(s, decimals)?;
+    let max_amount = canonicalize_amount(max_amount, decimals)
+        .map_err(|_| PayError::BadAmount("operator cap is invalid".into()))?;
+    let units = amount_to_base_units(&amount, decimals)
+        .ok_or_else(|| PayError::BadAmount("unparseable".into()))?;
+    let max_units = amount_to_base_units(&max_amount, decimals)
+        .ok_or_else(|| PayError::BadAmount("operator cap is invalid".into()))?;
+    if units > max_units {
+        return Err(PayError::BadAmount(format!(
+            "exceeds operator cap of {max_amount}"
+        )));
+    }
+    Ok(amount)
+}
+
+/// Convert a strict decimal token amount to Solana base units.
+pub fn amount_to_base_units(s: &str, decimals: u8) -> Option<u64> {
+    let s = s.trim();
+    let (int, frac) = match s.split_once('.') {
+        Some((int, frac)) if !int.is_empty() && !frac.is_empty() => (int, frac),
+        Some(_) => return None,
+        None if !s.is_empty() => (s, ""),
+        None => return None,
+    };
+    if !int.bytes().all(|byte| byte.is_ascii_digit())
+        || !frac.bytes().all(|byte| byte.is_ascii_digit())
+        || frac.len() > decimals as usize
+    {
+        return None;
+    }
+    let scale = 10u64.checked_pow(u32::from(decimals))?;
+    let whole = int.parse::<u64>().ok()?.checked_mul(scale)?;
+    let fractional = if frac.is_empty() {
+        0
+    } else {
+        let value = frac.parse::<u64>().ok()?;
+        value.checked_mul(10u64.checked_pow(u32::from(decimals) - frac.len() as u32)?)?
+    };
+    whole.checked_add(fractional)
 }
 
 /// Minimal RFC 3986 percent-encoding for query values.
@@ -184,7 +222,7 @@ mod tests {
             MERCHANT,
             "1.5",
             6,
-            100.0,
+            "100",
             Some(USDC),
             Some(REF),
             Some("Kiosk 01"),
@@ -208,7 +246,7 @@ mod tests {
             ("2", "2"),
             ("0.10", "0.1"),
         ] {
-            let t = TransferRequest::new(MERCHANT, input, 6, 100.0, None, None, None, None, None)
+            let t = TransferRequest::new(MERCHANT, input, 6, "100", None, None, None, None, None)
                 .unwrap();
             assert!(t.url().contains(&format!("amount={want}")), "{input}");
         }
@@ -216,24 +254,45 @@ mod tests {
 
     #[test]
     fn amount_fails_closed() {
-        for bad in ["0", "-1", "+1", "1e6", "abc", "", "1.1234567", "101"] {
-            let r = TransferRequest::new(MERCHANT, bad, 6, 100.0, None, None, None, None, None);
+        for bad in [
+            "0",
+            "-1",
+            "+1",
+            ".5",
+            "1.",
+            "1e6",
+            "abc",
+            "",
+            "1.1234567",
+            "101",
+        ] {
+            let r = TransferRequest::new(MERCHANT, bad, 6, "100", None, None, None, None, None);
             assert!(r.is_err(), "amount {bad:?} must be rejected");
         }
     }
 
     #[test]
+    fn amount_must_fit_solana_u64_base_units() {
+        assert_eq!(
+            amount_to_base_units("18.446744073709551615", 18),
+            Some(u64::MAX)
+        );
+        assert!(canonicalize_amount("18.446744073709551616", 18).is_err());
+        assert!(canonicalize_amount("100", 18).is_err());
+    }
+
+    #[test]
     fn bad_keys_fail_closed() {
         assert_eq!(
-            TransferRequest::new("not-a-key", "1", 6, 10.0, None, None, None, None, None).err(),
+            TransferRequest::new("not-a-key", "1", 6, "10", None, None, None, None, None).err(),
             Some(PayError::BadRecipient)
         );
         assert_eq!(
-            TransferRequest::new(MERCHANT, "1", 6, 10.0, Some("xx"), None, None, None, None).err(),
+            TransferRequest::new(MERCHANT, "1", 6, "10", Some("xx"), None, None, None, None).err(),
             Some(PayError::BadMint)
         );
         assert_eq!(
-            TransferRequest::new(MERCHANT, "1", 6, 10.0, None, Some("yy"), None, None, None).err(),
+            TransferRequest::new(MERCHANT, "1", 6, "10", None, Some("yy"), None, None, None).err(),
             Some(PayError::BadReference)
         );
     }
@@ -244,7 +303,7 @@ mod tests {
             MERCHANT,
             "1",
             6,
-            10.0,
+            "10",
             None,
             None,
             Some("a&amount=999"),
