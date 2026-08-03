@@ -1,0 +1,25 @@
+artifacts/e2e-guide.html
+  s_d4e40183daad6c::t_d58736e06f6f51 438-439,441-443
+  s_d4e40183daad6c::t_603d249053b96c 117-123,125,127-129
+  s_d4e40183daad6c::t_91d8dcd3248e12 359-418
+  s_d4e40183daad6c::t_8853a72440c83c 124
+  s_d4e40183daad6c::t_c77e50a7cba25c 126
+  s_d4e40183daad6c::t_f87632cfd7eb2d 436-437
+  s_d4e40183daad6c::t_08a02ea32bdf13 37,39-47,171,183,209,228,247,270,278,287,295,302,312,320,328,353,445,461,496
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "0be89953389e8931a556aa237a6faddcfa16712b",
+  "prompts": {},
+  "sessions": {
+    "s_d4e40183daad6c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5a5651de-86c4-4320-b1a9-751a8456ce34",
+        "model": "unknown"
+      },
+      "human_author": "sushant6095 <sushant.jain@vyapar.com>"
+    }
+  }
+}
