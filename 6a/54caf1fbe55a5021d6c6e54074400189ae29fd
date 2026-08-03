@@ -1,0 +1,22 @@
+scripts/demo-env.sh
+  s_d4e40183daad6c::t_fd95a0e1a69ad4 1-56
+artifacts/e2e-guide.html
+  s_d4e40183daad6c::t_adbfc397a25a8c 207-208
+  s_d4e40183daad6c::t_c4ae6689b1fb5a 162-184
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "6a54caf1fbe55a5021d6c6e54074400189ae29fd",
+  "prompts": {},
+  "sessions": {
+    "s_d4e40183daad6c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5a5651de-86c4-4320-b1a9-751a8456ce34",
+        "model": "claude-opus-5"
+      },
+      "human_author": "sushant6095 <sushant.jain@vyapar.com>"
+    }
+  }
+}
