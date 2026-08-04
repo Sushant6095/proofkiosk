@@ -1,0 +1,22 @@
+tests/exact-host-runtime/main.rs
+  s_d4e40183daad6c::t_b4fe68aaa362b3 482-578
+scripts/actuator.mjs
+  s_d4e40183daad6c::t_e7da4bbd9600d8 1-98,102-132
+  s_d4e40183daad6c::t_4c81e598624d0a 99-101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "689d101d839d7d8beb46513469e3832a2dbbadb0",
+  "prompts": {},
+  "sessions": {
+    "s_d4e40183daad6c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5a5651de-86c4-4320-b1a9-751a8456ce34",
+        "model": "claude-opus-5"
+      },
+      "human_author": "sushant6095 <sushant.jain@vyapar.com>"
+    }
+  }
+}
