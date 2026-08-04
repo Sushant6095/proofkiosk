@@ -1,0 +1,21 @@
+README.md
+  s_d4e40183daad6c::t_ecb154bc28c699 435-444
+sops/heartbeat/SOP.md
+  s_d4e40183daad6c::t_79e810d9302605 72-74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "32e4b827f7e5ddef143bf8d35d162e55e2424898",
+  "prompts": {},
+  "sessions": {
+    "s_d4e40183daad6c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5a5651de-86c4-4320-b1a9-751a8456ce34",
+        "model": "claude-opus-5"
+      },
+      "human_author": "sushant6095 <sushant.jain@vyapar.com>"
+    }
+  }
+}
