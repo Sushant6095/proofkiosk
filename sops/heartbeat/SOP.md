@@ -69,7 +69,9 @@ does not ship. Use an external driver and channel adapter; validation proves syn
    - next: 3
 
 2. **Live — nothing to do** — The newest attestation is inside the silence window.
-   Ends the branch so a healthy check never falls through onto the alert.
+   At the pinned commit a false top-level guard returns `NextStep::Complete`, so the run
+   already ends here; this step is belt-and-braces, not the thing preventing a healthy
+   check from reaching the alert.
    - terminal: true
 
 3. **Alert the operator** — Reached only when the heartbeat is stale or missing.

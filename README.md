@@ -432,9 +432,16 @@ The parts that cost real time, kept here because they are the reusable lessons:
 - **The SOP file format is not what the docs' TOML examples suggest.** Steps parse from
   `SOP.md`'s `## Steps` section, not from `[[steps]]` in TOML, and a malformed SOP is
   skipped **silently** — `zeroclaw sop list` just reports none found. Only
-  `--log-level trace -v` reveals why. Worse, a false `when:` guard falls through to the
-  *linear* next step rather than stopping, so a naive two-step "verify then actuate" SOP
-  fails **open**. Both are documented in [`sops/`](sops).
+  `--log-level trace -v` reveals why. Documented in [`sops/`](sops).
+- **Routing at the pin is fail-closed, and an earlier draft of this README said the
+  opposite.** We claimed a false top-level `when:` guard fell through to the *linear*
+  next step, making a naive "verify then actuate" SOP fail open, and cited an upstream
+  test by name. Reading `sop/route/mod.rs` at the pinned commit, a false guard returns
+  `NextStep::Complete` — it **ends the run** — and the test we cited does not exist. The
+  claim was wrong in the safe direction, which is the easiest kind to leave standing;
+  the practical consequence is that a terminal HOLD step is belt-and-braces rather than
+  load-bearing. Recorded rather than quietly deleted, because a security argument built
+  on an unverified reading of someone else's code is worth exactly nothing.
 
 ---
 
