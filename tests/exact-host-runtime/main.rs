@@ -479,6 +479,103 @@ fn tool(
     )
 }
 
+/// Host-direct verification against a REAL Solana node.
+///
+/// The test above proves the components execute through the exact pinned host,
+/// but every RPC answer is a local fixture. This one points `kiosk-watch` at a
+/// live endpoint and a reference that was genuinely paid, so the `paid` verdict
+/// is produced from chain state nobody in this repository authored.
+///
+/// It is opt-in: with `PROOFKIOSK_LIVE_RPC_URL` unset it returns immediately, so
+/// the default `cargo test` run stays deterministic and offline. Nothing here
+/// weakens the fixture test — it is additive evidence, not a replacement.
+#[tokio::test]
+async fn proofkiosk_watch_verifies_a_real_payment_through_exact_pinned_host() -> Result<()> {
+    let Ok(rpc_url) = std::env::var("PROOFKIOSK_LIVE_RPC_URL") else {
+        eprintln!("PROOFKIOSK_LIVE_RPC_URL unset — skipping live-RPC verification");
+        return Ok(());
+    };
+    let env_req = |key: &str| -> Result<String> {
+        std::env::var(key).with_context(|| format!("{key} is required for the live-RPC test"))
+    };
+    let reference = env_req("PROOFKIOSK_LIVE_REFERENCE")?;
+    let item = env_req("PROOFKIOSK_ITEM_ID")?;
+    let merchant = env_req("PROOFKIOSK_MERCHANT")?;
+    let mint = env_req("PROOFKIOSK_MINT")?;
+
+    let watch_config = HashMap::from([
+        ("rpc_url".into(), rpc_url.clone()),
+        ("merchant_address".into(), merchant.clone()),
+        ("usdc_mint".into(), mint.clone()),
+        (
+            "token_decimals".into(),
+            std::env::var("PROOFKIOSK_TOKEN_DECIMALS").unwrap_or_else(|_| "6".into()),
+        ),
+        ("price_list".into(), env_req("PROOFKIOSK_PRICE_LIST")?),
+        // The authority whose fulfillment marker would count. Required by the
+        // actuating path, so single-use cannot be silently disabled.
+        (
+            "device_authority".into(),
+            std::env::var("PROOFKIOSK_DEVICE_AUTHORITY").unwrap_or_else(|_| merchant.clone()),
+        ),
+        ("device_address".into(), DEVICE.into()),
+        ("device_id".into(), "kiosk-01".into()),
+        ("finality".into(), "finalized".into()),
+    ]);
+
+    let watch = tool(
+        "PROOFKIOSK_WATCH_WASM",
+        "kiosk-watch",
+        vec![PluginPermission::HttpClient, PluginPermission::ConfigRead],
+        watch_config,
+    )?;
+    let result = tokio::time::timeout(
+        WASM_EXECUTION_TIMEOUT,
+        watch.execute(json!({ "reference": reference, "item_id": item })),
+    )
+    .await
+    .context("live kiosk-watch execution timed out")??;
+
+    // Persist the raw WIT ToolResult exactly as the host produced it. This file
+    // is the evidence artifact; `create_new` refuses to overwrite an earlier run.
+    if let Ok(path) = std::env::var("PROOFKIOSK_LIVE_OUTPUT") {
+        let wrapper = json!({
+            "success": result.success,
+            "output": &result.output,
+            "error": &result.error,
+        });
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .with_context(|| format!("refusing to overwrite live output {path}"))?;
+        writeln!(file, "{}", serde_json::to_string(&wrapper)?)?;
+        file.sync_all()?;
+    }
+
+    ensure!(
+        result.success,
+        "live payment was not accepted: {:?} / {}",
+        result.error,
+        result.output
+    );
+    let output: Value = serde_json::from_str(&result.output)?;
+    ensure!(
+        output["v"] == 1 && output["status"] == "paid" && output["payment_verified"] == true,
+        "live watch did not emit paid: {}",
+        result.output
+    );
+    ensure!(output["reference"] == reference, "reference mismatch");
+    ensure!(output["item_id"] == item, "item mismatch");
+    ensure!(output["recipient"] == merchant, "recipient mismatch");
+    ensure!(output["mint"] == mint, "mint mismatch");
+    println!(
+        "LIVE host-direct paid verdict: signature={} slot={} amount={}",
+        output["signature"], output["slot"], output["amount"]
+    );
+    Ok(())
+}
+
 #[tokio::test]
 async fn proofkiosk_components_execute_through_exact_pinned_host() -> Result<()> {
     let merchant = std::env::var("PROOFKIOSK_MERCHANT").unwrap_or_else(|_| MERCHANT.to_string());
