@@ -1,0 +1,20 @@
+docs/index.html
+  s_d41ba85c4c4413::t_2fd1f2c14b48f8 1,4-7,9-53,55-360,363-371,374-384,387-390,392-399,401-710
+  s_d41ba85c4c4413::t_825c0f3be04b80 8,54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "fa15df01f6e90c246355832ef100cc439f4328a8",
+  "prompts": {},
+  "sessions": {
+    "s_d41ba85c4c4413": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fd34f-7cbc-7da0-8649-ed3a208e5dc2",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "sushant6095 <sushant.jain@vyapar.com>"
+    }
+  }
+}
