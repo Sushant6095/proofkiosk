@@ -8,6 +8,7 @@ staged/
 .devnet/
 .proofkiosk/
 node_modules/
+dist/
 .playwright-mcp/
 artifacts/
 

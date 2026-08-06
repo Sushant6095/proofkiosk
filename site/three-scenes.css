@@ -1,0 +1,219 @@
+.three-mount,
+.three-stage {
+  width: 100%;
+  height: 100%;
+}
+
+.three-mount > .three-stage {
+  min-height: inherit;
+}
+
+.hardware-stage { height: 610px; min-height: 610px; }
+.architecture-stage { height: 620px; min-height: 620px; }
+
+.three-stage {
+  position: relative;
+  overflow: hidden;
+  background: #0b0c0d;
+  isolation: isolate;
+}
+
+.three-stage::after {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  content: "";
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, .035) 1px, transparent 1px),
+    linear-gradient(rgba(255, 255, 255, .035) 1px, transparent 1px);
+  background-size: 38px 38px;
+  mask-image: linear-gradient(to bottom, transparent, #000 30%, #000 72%, transparent);
+}
+
+.three-stage canvas {
+  position: relative;
+  z-index: 0;
+  touch-action: none;
+}
+
+.scene-label {
+  min-width: max-content;
+  padding: 7px 9px;
+  border: 1px solid rgba(255, 255, 255, .18);
+  border-radius: 8px;
+  color: #f2efe8;
+  background: rgba(10, 12, 13, .88);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .28);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  line-height: 1.15;
+  pointer-events: none;
+  backdrop-filter: blur(10px);
+}
+
+.scene-label b,
+.scene-label span {
+  display: block;
+}
+
+.scene-label b {
+  font-size: 10px;
+  letter-spacing: .02em;
+}
+
+.scene-label span {
+  margin-top: 3px;
+  color: #9aa2a6;
+  font-size: 7px;
+}
+
+.scene-label.amber { border-color: rgba(255, 159, 28, .7); }
+.scene-label.mint { border-color: rgba(72, 224, 177, .7); }
+.scene-label.blue { border-color: rgba(140, 200, 255, .7); }
+.scene-label.red { border-color: rgba(228, 90, 79, .7); }
+.scene-label.violet { border-color: rgba(169, 147, 255, .7); }
+
+.diagram-node {
+  width: 154px;
+  padding: 7px 9px;
+  border: 0;
+  color: #f7f5ef;
+  background: transparent;
+  text-align: center;
+  cursor: pointer;
+}
+
+.diagram-node b,
+.diagram-node span {
+  display: block;
+  pointer-events: none;
+}
+
+.diagram-node b {
+  font: 900 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: -.02em;
+}
+
+.diagram-node span {
+  margin-top: 5px;
+  color: rgba(255, 255, 255, .7);
+  font: 700 6px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+
+.diagram-node.roadmap span::before {
+  content: "ROADMAP · ";
+  color: #ff9f1c;
+}
+
+.diagram-node.active b {
+  text-shadow: 0 0 16px rgba(255, 255, 255, .76);
+}
+
+.scene-corner,
+.scene-key {
+  position: absolute;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.scene-corner-top {
+  top: 18px;
+  left: 18px;
+}
+
+.scene-corner b,
+.scene-corner span {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-transform: uppercase;
+}
+
+.scene-corner b {
+  color: #f3f0e9;
+  font-size: 9px;
+  letter-spacing: .12em;
+}
+
+.scene-corner span {
+  margin-top: 5px;
+  color: #778084;
+  font-size: 7px;
+  letter-spacing: .08em;
+}
+
+.scene-key {
+  right: 18px;
+  bottom: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 12px;
+  color: #939b9f;
+  font: 700 8px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.scene-key span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.scene-key i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #48e0b1;
+}
+
+.scene-key i.roadmap {
+  background: transparent;
+  border: 1px dashed #ff9f1c;
+}
+
+.scene-key i.solid {
+  border-radius: 2px;
+}
+
+.scene-fallback {
+  width: 100%;
+  height: 100%;
+  min-height: 360px;
+  display: grid;
+  place-content: center;
+  gap: 8px;
+  padding: 30px;
+  color: #f2efe8;
+  background: #111416;
+  text-align: center;
+}
+
+.scene-fallback span {
+  max-width: 380px;
+  color: #9ba1a5;
+  font-size: 13px;
+}
+
+@media (max-width: 980px) {
+  .hardware-stage { height: 540px; min-height: 540px; }
+  .architecture-stage { height: 520px; min-height: 520px; }
+  .scene-label { transform: scale(.88); }
+}
+
+@media (max-width: 660px) {
+  .hardware-stage { height: 455px; min-height: 455px; }
+  .architecture-stage { height: 390px; min-height: 390px; }
+  .scene-label { min-width: 0; width: max-content; max-width: 140px; transform: scale(.7); white-space: normal; }
+  .diagram-node { width: 116px; padding: 4px; }
+  .diagram-node b { font-size: 8px; }
+  .diagram-node span { font-size: 5px; }
+  .scene-key { left: 12px; right: 12px; justify-content: flex-start; }
+  .scene-corner-top { top: 12px; left: 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .three-stage canvas { scroll-behavior: auto; }
+}
