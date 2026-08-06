@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && /bin/pwd -P)"
 ZEROCLAW_BIN="${ZEROCLAW_BIN:-$ROOT/.build/zeroclaw-install/bin/zeroclaw}"
 
 [[ -x "$ZEROCLAW_BIN" ]] || {

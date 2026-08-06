@@ -9,7 +9,7 @@
 # With no argument, stages all three.
 
 set -euo pipefail
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && /bin/pwd -P)"
 PLUGINS=("${@:-kiosk-charge kiosk-watch kiosk-attest}")
 # shellcheck disable=SC2206
 PLUGINS=(${PLUGINS[*]})

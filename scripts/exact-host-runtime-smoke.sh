@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && /bin/pwd -P)"
 UPSTREAM_REF="$(grep -E '^[0-9a-f]{40}$' "$ROOT/wit/UPSTREAM_REF" | head -1)"
 SOURCE_DIR="${ZEROCLAW_SOURCE_DIR:-$ROOT/.build/zeroclaw-${UPSTREAM_REF:0:12}}"
 

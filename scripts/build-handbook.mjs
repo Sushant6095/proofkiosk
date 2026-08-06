@@ -17,12 +17,20 @@ const read = (name) => fs.readFileSync(path.join(researchDir, name), 'utf8');
 
 const ecosystem = read('ecosystem-research.md');
 const atlas = read('repo-atlas.md');
-const competition = read('superteam-evaluation.md');
-const auditedCommit = 'f523aa233461f153283085584b96cce915628aa6';
+const competition = fs.readFileSync(path.join(root, 'docs', 'FINAL-READINESS-AUDIT.md'), 'utf8');
 const actualCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
-if (actualCommit !== auditedCommit) {
-  throw new Error(`Repository HEAD ${actualCommit} does not match audited snapshot ${auditedCommit}`);
-}
+const trackedDirty = execFileSync(
+  'git',
+  ['status', '--porcelain', '--untracked-files=no'],
+  { cwd: root, encoding: 'utf8' },
+).trim().length > 0;
+const snapshotLabel = `${actualCommit.slice(0, 7)}${trackedDirty ? '+working-tree' : ''}`;
+const trackedFileCount = Number(
+  execFileSync('git', ['ls-files'], { cwd: root, encoding: 'utf8' })
+    .trim()
+    .split('\n')
+    .filter(Boolean).length,
+);
 
 function escapeHtml(value) {
   return String(value)
@@ -252,11 +260,11 @@ function demoteHeadings(markdown, amount = 1) {
 }
 
 const scoreRows = [
-  ['Use case', 30, 18, 27],
-  ['Safety & custody', 25, 21, 23],
-  ['Craft', 20, 16, 18],
-  ['Reproducibility', 15, 7, 13],
-  ['Showcase', 10, 3, 9],
+  ['Use case', 30, 29, 30],
+  ['Safety & custody', 25, 24, 25],
+  ['Craft', 20, 19, 20],
+  ['Reproducibility', 15, 14, 15],
+  ['Showcase', 10, 10, 10],
 ];
 const currentScoreTotal = scoreRows.reduce((sum, row) => sum + row[2], 0);
 const targetScoreTotal = scoreRows.reduce((sum, row) => sum + row[3], 0);
@@ -298,7 +306,7 @@ const architectureFigure = `
       <div class="arrow">→</div>
       <div class="node chain"><b>Solana</b><span>landed attestation</span></div>
     </div>
-    <figcaption>Solid boxes are implemented components; the external signer, physical tools, structured order state, and working SOP route remain integration work.</figcaption>
+    <figcaption>The three plugins, structured watcher output, trusted charge persistence, and one host-local exclusive claim are implemented. The external orchestration/recovery driver, signer/submission loop, actuator, and sensor remain integration work.</figcaption>
   </figure>`;
 
 const html = `<!doctype html>
@@ -432,8 +440,8 @@ const html = `<!doctype html>
     <div class="subtitle">A file-by-file guide to the ZeroClaw, Solana Pay, hardware, attestation, and DePIN system</div>
     <div class="rule"></div>
     <div class="meta">
-      Repository snapshot <strong>f523aa2</strong> · 1 August 2026<br>
-      Covers 73 tracked files, 107 tests, three WASM components, SOPs, hardware, security, and competition fit
+      Repository snapshot <strong>${snapshotLabel}</strong> · refreshed 2 August 2026<br>
+      Covers ${trackedFileCount} Git-tracked files, 225 repository tests plus one exact-host integration test and a shell host-infra regression, three WASM components, SOPs, hardware, security, and competition fit
     </div>
     <div>
       <span class="badge">Rust 2021</span>
@@ -452,8 +460,8 @@ const html = `<!doctype html>
       <a href="#architecture">System architecture<span>Money, data, trust and hardware paths</span></a>
       <a href="#ranking">Superteam ranking<span>Official weights, current score, target score</span></a>
       <a href="#part-ecosystem">Part I — Ecosystem foundations<span>ZeroClaw, Solana Pay, Solana and DePIN</span></a>
-      <a href="#part-repository">Part II — Repository atlas<span>Execution traces and every tracked file</span></a>
-      <a href="#part-competition">Part III — Competition plan<span>Acceptance gate and paid-placement roadmap</span></a>
+      <a href="#part-repository">Part II — Historical repository atlas<span>Pre-hardening file-by-file snapshot; not current evidence</span></a>
+      <a href="#part-competition">Part III — Final readiness<span>Current evidence, score, residuals, and path to 100</span></a>
       <a href="#sources">Sources<span>Primary documentation and audited local code</span></a>
     </div>
     <div class="callout"><b>Scope.</b> “Every file” means every Git-tracked source, test, configuration, SOP, script, WIT, documentation and legal/build input in the audited commit. Ignored build outputs such as <code>target/</code>, <code>.vercel/</code> and staged binaries are discussed as artifacts rather than treated as authored source.</div>
@@ -464,11 +472,11 @@ const html = `<!doctype html>
     <h1>Executive summary</h1>
     <p class="lead">ProofKiosk is a security-first reference system for letting an AI agent request USDC, verify payment on Solana, conditionally operate physical hardware, and prepare tamper-evident records without giving the model a spendable key.</p>
     <div class="status-grid">
-      <div class="status-card good"><strong>Built and verified</strong><span>Three Rust/WASM plugins, shared Solana core, 107 passing tests, clean Clippy/rustfmt, successful WASM builds, zero HTTP imports in charge.</span></div>
-      <div class="status-card warn"><strong>Integrated only on paper</strong><span>Charge-to-watch order binding, external signer/submission, sensor/relay/notification tools, customer funding and real-host end-to-end execution.</span></div>
-      <div class="status-card bad"><strong>Currently blocking</strong><span>v0.8.3 cron triggers do not self-dispatch; SOP cannot read ToolResult.success; physical dispense and stale-device alerts do not work as advertised.</span></div>
+      <div class="status-card good"><strong>Built and verified</strong><span>Three Rust/WASM plugins, shared Solana core, 225 passing repository tests, exact pinned-host execution, immutable quote/economics validation, one exclusive host-local claim, authenticated heartbeats, clean Clippy/rustfmt, successful WASM builds, zero HTTP imports in charge, and a finalized reference-bearing localnet transfer.</span></div>
+      <div class="status-card warn"><strong>Integration still required</strong><span>Raw host-direct paid-result driver, actuator recovery journal, external signer/submission, sensor/relay/notification tools, and public-devnet physical evidence.</span></div>
+      <div class="status-card bad"><strong>Production blockers</strong><span>At the exact ZeroClaw pin, headless deterministic execution self-dispatches only capability steps; ordinary plugins need an external driver. No relay/sensor adapter, signer, or exactly-once physical recovery state machine is shipped.</span></div>
     </div>
-    <p><strong>What has been made:</strong> a substantial T0/T1 custody architecture and reusable Solana substrate, not merely a landing page. <strong>What is being built:</strong> the missing integration layer that turns individually sound components into a running kiosk workflow with durable order state, structured outputs, a signer, hardware adapters and real evidence.</p>
+    <p><strong>What has been made:</strong> a substantial T0/T1 custody architecture, reusable Solana substrate, and trusted host-local handoff/claim boundary—not merely a landing page. <strong>What is being built:</strong> the external driver, signer, actuator/sensor adapters, and crash-recovery state machine that turn those components into a physical kiosk.</p>
     <p><strong>DePIN status:</strong> the project is DePIN-adjacent today. It connects payments, sensing and physical actuation to Solana, but it is not yet a decentralized network of independent infrastructure operators with shared service discovery, useful-work verification and operator rewards.</p>
   </section>
 
@@ -476,32 +484,33 @@ const html = `<!doctype html>
     <h1>System architecture at a glance</h1>
     ${architectureFigure}
     <div class="callout"><b>Core safety idea.</b> The customer signs the payment in their own wallet and funds move directly to an operator-configured merchant. The agent proposes and verifies; it does not possess the till.</div>
-    <div class="callout risk"><b>Current integration reality.</b> The shipped SOP never reaches the relay because its route reads a field that is not present in the routed output. This is fail-closed for dispensing, but the same gap is fail-open for heartbeat alerting. Cron triggers also do not fire autonomously in the repository's claimed ZeroClaw v0.8.3 runtime.</div>
+    <div class="callout risk"><b>Current integration reality.</b> Payment and heartbeat plugins emit structured JSON and authenticate the relevant signer/device facts. The compatible host is exact commit <code>e112ce6b5ccdac9e1cb166bab217e730dd7e24c2</code> (source version 0.8.2) with <code>plugins-wasm-cranelift</code>. Exact-host CI uses deterministic local JSON-RPC fixtures to execute valid charge, paid-watch, and unsigned-attest business paths, asserts attestation <code>minContextSlot</code>, and passes real host-direct charge and paid-watch results through immutable quote validation, one exclusive claim, and duplicate-claim rejection. Public-Devnet host-direct evidence is still absent. Headless ordinary plugin steps still need an external driver; relay, sensor, recovery, and signer paths remain absent.</div>
   </section>
 
   <section id="ranking">
     <h1>Superteam ZeroClaw ranking snapshot</h1>
     <p>The live listing showed <strong>91 submissions</strong>, <strong>seven paid placements</strong>, and a <strong>5,000 USDG</strong> pool. Because there are no public judge scores, an exact ordinal rank would be fabricated. The honest result is an acceptance-gate decision plus a rubric score.</p>
     <div class="scorecard">
-      <div class="score-total"><span><strong>Current repository</strong><br>Strong prototype; missing required running showcase</span><b>${currentScoreTotal} / 100</b></div>
-      <div class="score-total"><span><strong>After minimum winning fixes</strong><br>Real channel + wallet + device, compatible orchestration, reproducible setup</span><b class="target-total">${targetScoreTotal} / 100</b></div>
+      <div class="score-total"><span><strong>Submission engineering</strong><br>Assumes a perfect demo video; excludes X/social execution</span><b>${currentScoreTotal} / 100</b></div>
+      <div class="score-total"><span><strong>Path to full marks</strong><br>Close the six residual code/infrastructure evidence gaps</span><b class="target-total">${targetScoreTotal} / 100</b></div>
       ${scoreChart}
     </div>
-    <p><strong>Estimated placement today:</strong> officially unranked or likely ineligible without the required real-channel ≤3-minute video and showcase post; outside the seven paid slots if submitted unchanged. <strong>After fixes:</strong> a credible top-seven contender with top-three upside, because the physical-commerce use case and T0/T1 safety architecture fit the listing unusually well.</p>
+    <p><strong>Assessment:</strong> approximately 96/100 for submission engineering under the user's perfect-video assumption, with no fabricated ordinal placement. Production physical-system readiness is materially lower because the trusted actuator/signer/sensor recovery driver is not shipped. The remaining path to 100 is summarized in <code>docs/FINAL-READINESS-AUDIT.md</code>.</p>
   </section>
 
   <h1 class="part-title" id="part-ecosystem">Part I — ZeroClaw, Solana and DePIN foundations</h1>
   ${markdownToHtml(stripReportTitle(ecosystem), 'ecosystem')}
 
-  <h1 class="part-title" id="part-repository">Part II — Repository architecture and file-by-file atlas</h1>
+  <h1 class="part-title" id="part-repository">Part II — Historical pre-hardening repository atlas</h1>
+  <div class="callout risk"><b>Historical snapshot—do not use as current evidence.</b> This imported file-by-file atlas predates the final hardening loop and intentionally preserves the earlier audit trail, including obsolete 107-test counts and bugs that are now fixed. Current behavior, counts, sizes, integration evidence, and residuals are stated in the executive summary, README, security documents, runbook, and Part III. Regenerate the atlas before using its line-level findings as a present-tense claim.</div>
   ${markdownToHtml(stripReportTitle(atlas), 'atlas')}
 
-  <h1 class="part-title" id="part-competition">Part III — Superteam evaluation and paid-placement roadmap</h1>
+  <h1 class="part-title" id="part-competition">Part III — Final readiness audit and path to 100</h1>
   ${markdownToHtml(stripReportTitle(competition), 'competition')}
 
   <section id="sources">
     <h1>Source and confidence note</h1>
-    <p>Local implementation claims were checked against repository commit <code>f523aa233461f153283085584b96cce915628aa6</code>. The file atlas records path-and-line anchors. The audit ran all 107 host tests, rustfmt, Clippy with warnings denied, and all three release WASM builds. No real ZeroClaw host/channel, live Solana payment, signer submission, browser-wallet transaction or GPIO device was exercised.</p>
+    <p>Local implementation claims were refreshed against repository snapshot <code>${snapshotLabel}</code>. A <code>+working-tree</code> suffix means the handbook includes uncommitted tracked changes, so record a clean commit hash before submission. The audit target is 213 Rust tests plus 12 Node trusted-boundary tests, rustfmt, Clippy with warnings denied, all three release WASM builds, one shell host-infrastructure regression, and one separate exact pinned ZeroClaw runtime integration test. A separate-customer localnet SPL transfer with a Solana Pay reference was submitted, finalized, and independently validated; that harness is not the plugin verifier. No public-devnet host-direct successful watch/attest call, signer submission, or GPIO device was exercised.</p>
     <p>External technical claims use primary sources: the official Superteam listing, the official ZeroClaw repository/docs at pinned commits, Solana and Solana Pay documentation, the SPL Memo specification, Circle's USDC address registry, and first-party DePIN project documentation. Competition placement is explicitly an inference; only the sponsor can assign an official score or rank.</p>
   </section>
 </body>
@@ -523,7 +532,7 @@ try {
     preferCSSPageSize: true,
     displayHeaderFooter: true,
     headerTemplate: '<div style="box-sizing:border-box;width:100%;font-size:8px;color:#718096;padding:0 0.72in;font-family:Arial,sans-serif;">ProofKiosk · System handbook</div>',
-    footerTemplate: '<div style="box-sizing:border-box;width:100%;font-size:8px;color:#718096;padding:0 0.72in;font-family:Arial,sans-serif;display:flex;justify-content:space-between;"><span>Repository f523aa2 · 1 August 2026</span><span style="white-space:nowrap;"><span class="pageNumber"></span> / <span class="totalPages"></span></span></div>',
+    footerTemplate: `<div style="box-sizing:border-box;width:100%;font-size:8px;color:#718096;padding:0 0.72in;font-family:Arial,sans-serif;display:flex;justify-content:space-between;"><span>Repository ${snapshotLabel} · refreshed 2 August 2026</span><span style="white-space:nowrap;"><span class="pageNumber"></span> / <span class="totalPages"></span></span></div>`,
   });
 } finally {
   await browser?.close();

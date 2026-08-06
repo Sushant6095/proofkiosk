@@ -9,7 +9,7 @@
     "build:site": "vite build",
     "preview:site": "vite preview --host 127.0.0.1",
     "devnet:pay": "node scripts/devnet-pay.mjs",
-    "test:handoff": "node --test scripts/trusted-charge-handoff.test.mjs scripts/trusted-order-claim.test.mjs"
+    "test:handoff": "node --test scripts/trusted-charge-handoff.test.mjs scripts/trusted-order-claim.test.mjs scripts/actuator.test.mjs scripts/kiosk-display.test.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.8",

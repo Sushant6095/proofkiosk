@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && /bin/pwd -P)"
 TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/.build/zeroclaw-target}"
 
 if [[ "${1:-}" == "--print-target-dir" ]]; then
