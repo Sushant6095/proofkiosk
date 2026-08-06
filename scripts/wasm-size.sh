@@ -3,7 +3,7 @@
 # have larger budgets because they bundle the `waki` HTTP/TLS client.
 
 set -euo pipefail
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && /bin/pwd -P)"
 TARGET_DIR="${CARGO_TARGET_DIR:-/tmp/kiosk-size}"
 
 rustup target list --installed 2>/dev/null | grep -q wasm32-wasip2 \

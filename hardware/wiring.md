@@ -3,10 +3,11 @@
 Rung 3 of the [three-rung ladder](../README.md#the-three-rung-ladder). Rungs 1 and 2
 need no hardware at all; this page is only for the physical kiosk.
 
-**You do not need any of this to evaluate ProofKiosk.** The payment rail runs on a
-laptop/localnet. This page is a reference design, not evidence that the repository
-currently drives a dispenser: the bounded relay adapter and delivery sensor are not
-implemented.
+**You do not need any of this to evaluate the payment plugins.** The payment rail runs on
+a laptop/localnet. The repository now includes `scripts/actuator.mjs`: a fixed-BCM17,
+400 ms, cooldown-enforcing host driver behind raw-result validation and an exclusive
+claim. Its automated test uses a fake GPIO executable. This page is still a reference
+design—not evidence of a particular relay/load build or sensor-backed delivery.
 
 ## Bill of materials
 
@@ -21,8 +22,9 @@ implemented.
 
 ## Pin map
 
-Physical pin numbers, BCM in parentheses. This is a proposed mapping for a future
-fixed-pin adapter. No checked-in `relay_pulse` implementation currently binds to it.
+Physical pin numbers, BCM in parentheses. `scripts/actuator.mjs` binds the control output
+to BCM17; relay polarity must be verified with the load disconnected because the current
+driver assumes active-high operation.
 
 | Signal | Pi pin | BCM | Goes to |
 |---|---|---|---|
@@ -77,9 +79,11 @@ datasheet; 12 V must never touch a Pi pin.
 4. **Active-low boards are common.** Many cheap relay modules energize on a LOW input,
    so they click on at boot while the GPIO is still floating. Test the polarity with
    the load disconnected before you wire anything that moves.
-5. **Pulse in a non-LLM safety adapter, never with two unconstrained GPIO calls.** The
-   400 ms value in the payment SOP is a desired interface, not implemented code. The
-   adapter must cap duration internally and force the inactive level on timeout/crash.
+5. **Pulse in a non-LLM safety adapter, never with two unconstrained model-callable GPIO
+   calls.** `scripts/actuator.mjs` fixes BCM17 and 400 ms, caps the GPIO command timeout,
+   preflights LOW, uses a host-wide lock/cooldown, and forces LOW in `finally`. A hardware
+   monostable/watchdog is still required before a production inductive load because a
+   killed or frozen OS process cannot itself guarantee de-energization.
 6. **Fail-safe position.** Wire the dispenser so the de-energized state is *closed*.
    Power loss, a crashed agent, and a stuck process should all mean "nothing dispenses",
    never "everything dispenses".
@@ -110,8 +114,9 @@ ZEROCLAW_FEATURES=plugins-wasm-cranelift,hardware,peripheral-rpi \
 
 - `plugins-wasm-cranelift` — the WIT plugin host that loads the three
   kiosk components. Needed on the laptop too.
-- `hardware,peripheral-rpi` — lower-level GPIO/peripheral support. The exact pin does
-  **not** provide ProofKiosk's desired `relay_pulse` or `bme280_read` adapters.
+- `hardware,peripheral-rpi` — ZeroClaw's lower-level GPIO/peripheral support. ProofKiosk's
+  trusted actuator remains a separate, non-model-callable host process using `pinctrl`
+  (Pi OS Bookworm) or `raspi-gpio`; no `relay_pulse` tool is exposed to the agent.
 
 Enable I²C for the BME280 (`raspi-config` → Interface Options → I²C), then confirm the
 sensor is on the bus before wiring the relay:
@@ -122,10 +127,13 @@ i2cdetect -y 1        # expect 0x76 or 0x77
 
 ## Wiring it to the SOPs
 
-`sops/payment-loop/` specifies the desired guard and pulse contract; it does not execute
-the relay. ProofKiosk ships a host-local exclusive order claim, but no driver connects it
-to GPIO and no claimed → actuating → delivered recovery journal exists. Before connecting
-any load, implement and review a fixed-pin, fixed-polarity, duration-capped,
-cooldown-enforcing adapter plus physical delivery sensing and crash recovery. Until those
-exist, keep the load disconnected and demo only an LED/current-limited simulator under
-human control.
+`sops/payment-loop/` specifies the desired guard and pulse contract; validation alone does
+not execute the relay. The external path is raw host-direct watch result → immutable order
+comparison → host lock/cooldown → exclusive claim → `actuating` → fixed GPIO pulse →
+`pulse_completed`. It is invoked outside the model with `scripts/actuator.mjs`; the
+pinned headless SOP does not automatically dispatch it.
+
+`pulse_completed` is deliberately not `delivered`. A crash after the claim, a mechanical
+jam, or an item failing to fall requires operator recovery. Before a production load, add
+a hardware one-shot/watchdog and a sensor-backed `delivered`/`jammed` transition. Until
+then, rehearse with an LED/current-limited load and keep a reachable disconnect.

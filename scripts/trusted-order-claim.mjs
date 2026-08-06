@@ -154,9 +154,8 @@ function fsyncDirectory(directory) {
   try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
 }
 
-export function claimOrder({ reference, ordersDir, rawWatchResult, driverId, nowMs = Date.now() }) {
+export function inspectOrder({ reference, ordersDir, rawWatchResult }) {
   if (decodeBase58Length(reference) !== 32) fail('reference is not a Solana pubkey');
-  if (!/^[A-Za-z0-9_-]{1,64}$/u.test(driverId)) fail('driver-id is invalid');
   const directoryStats = fs.lstatSync(ordersDir);
   if (!directoryStats.isDirectory() || directoryStats.isSymbolicLink()) fail('orders directory is not trusted');
   const orderFile = path.join(ordersDir, `${reference}.json`);
@@ -164,6 +163,12 @@ export function claimOrder({ reference, ordersDir, rawWatchResult, driverId, now
   const order = parseExactJson(orderRaw, 'persisted order');
   if (order.reference !== reference) fail('persisted order filename/reference mismatch');
   const watch = validateClaim(rawWatchResult, order);
+  return { order, orderRaw, watch };
+}
+
+export function claimOrder({ reference, ordersDir, rawWatchResult, driverId, nowMs = Date.now() }) {
+  if (!/^[A-Za-z0-9_-]{1,64}$/u.test(driverId)) fail('driver-id is invalid');
+  const { order, orderRaw, watch } = inspectOrder({ reference, ordersDir, rawWatchResult });
   if (!Number.isSafeInteger(nowMs) || nowMs < 0) fail('claim time is invalid');
   const claim = {
     v: 1,

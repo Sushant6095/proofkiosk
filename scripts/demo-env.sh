@@ -14,7 +14,7 @@ case "${ZSH_EVAL_CONTEXT:-}${BASH_SOURCE[0]:+file}" in
   *) printf 'run this as:  source %s\n' "$0" >&2; exit 1 ;;
 esac
 
-PROOFKIOSK_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")/.." && pwd)"
+PROOFKIOSK_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")/.." && /bin/pwd -P)"
 export PROOFKIOSK_ROOT
 
 export ZEROCLAW_SRC="$PROOFKIOSK_ROOT/.build/zeroclaw-e112ce6b5ccd"

@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import { claimOrder, validateClaim } from './trusted-order-claim.mjs';
+import { claimOrder, inspectOrder, validateClaim } from './trusted-order-claim.mjs';
 
 const REFERENCE = 'Stake11111111111111111111111111111111111111';
 const SIGNATURE = '1'.repeat(64);
@@ -106,6 +106,19 @@ test('durably claims once and rejects a second actuator attempt', () => {
       driverId: 'test-driver',
       nowMs: 5_000_001,
     }), /already claimed/u);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('inspects valid evidence without consuming the one-time claim', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'proofkiosk-inspect-test-'));
+  try {
+    fs.writeFileSync(path.join(directory, `${REFERENCE}.json`), `${JSON.stringify(order)}\n`, { mode: 0o600 });
+    const inspected = inspectOrder({ reference: REFERENCE, ordersDir: directory, rawWatchResult: watch() });
+    assert.equal(inspected.watch.status, 'paid');
+    assert.equal(inspected.order.item_id, 'cold_drink');
+    assert.equal(fs.existsSync(path.join(directory, `${REFERENCE}.claim.json`)), false);
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
   }

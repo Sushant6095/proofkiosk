@@ -12,9 +12,11 @@ talk to your agent and your agent can move funds or actuate something, this repo
 worked example of how to make that safe by construction rather than by prompt. Three
 small WASM tool plugins over one shared pure crate; each is useful on its own.
 
-**The payment rail is built and host-tested, and the localnet harness has landed a
-reference-bearing test-token transfer at `finalized`. A public-devnet/browser-wallet
-run, physical actuation, and signed attestation submission still need demonstration.** The table below
+**The payment rail is built, host-tested, and demonstrated end to end on public devnet:
+a real reference-bearing transfer reached `finalized`, `kiosk-watch` running inside the
+exact pinned host returned `paid` from that chain state, and the order was claimed exactly
+once with the replay refused. A browser-wallet payment, physical actuation, and signed
+attestation submission still need demonstration.** The table below
 is the authoritative split — read it before
 anything else in this README, which describes the full design including parts that do not
 run yet.
@@ -29,10 +31,10 @@ run yet.
 | — replay-resistant verifier | ✅ **Host-tested** | Once an **authenticated** `PKFUL1` marker has landed, the same reference can return `AlreadyFulfilled` while that marker remains in the bounded ten-signature scan. The durable local claim is the single-host physical replay barrier; signer/submission for the on-chain marker remains roadmap. |
 | — bounded work under reference poisoning | ✅ **Runs today** | One ten-signature window is scanned and every tagged candidate in it is authenticated. Work is bounded; more than ten newer public transactions can still push a payment or marker outside that window, which fails closed for first delivery but is a residual replay risk after delivery. |
 | Authenticated heartbeat verdict | ✅ **Runs today** | Heartbeat address and device id are operator config. A candidate counts only after the configured authority signed it and the configured device account is present; spoofed public memos are ignored. |
-| Automated test suite | ✅ **Runs today** | **213 Rust tests** across four crates (80 core / 19 charge / 76 watch / 38 attest), plus **12 Node trusted-boundary tests**: **225 total**. Rust RPC tests are mocked and use no live network. A separate exact-host integration test and shell host-infrastructure regression also pass. |
-| Exact pinned ZeroClaw execution | ✅ **Runs today** | `host-smoke.sh` transitively runs `exact-host-runtime-smoke.sh` against a pristine pinned source tree and lockfile. Deterministic local JSON-RPC fixtures drive valid business paths for all three components: charge `created`, watch `paid` after two RPC calls, and attest `signature_required` from a valid nonce/init history with `minContextSlot`. It proves host config defeats caller-spoofed `__config`, then carries the actual charge and paid-watch `ToolResult`s through trusted persistence, economics/time validation, one exclusive claim, and duplicate-claim rejection. This is exact-host local-fixture evidence, not public-Devnet evidence. |
+| Automated test suite | ✅ **Runs today** | **213 Rust tests** across four crates (80 core / 19 charge / 76 watch / 38 attest), plus **24 Node trusted-boundary/actuator/display tests**: **237 total**. Rust RPC tests are mocked and use no live network. A separate exact-host integration test and shell host-infrastructure regression also pass. |
+| Exact pinned ZeroClaw execution | ✅ **Runs today** | `host-smoke.sh` transitively runs `exact-host-runtime-smoke.sh` against a pristine pinned source tree and lockfile. Deterministic local JSON-RPC fixtures drive valid business paths for all three components: charge `created`, watch `paid` after two RPC calls, and attest `signature_required` from a valid nonce/init history with `minContextSlot`. It proves host config defeats caller-spoofed `__config`, then carries the actual charge and paid-watch `ToolResult`s through trusted persistence, economics/time validation, one exclusive claim, and duplicate-claim rejection. That run is exact-host local-fixture evidence. A separate opt-in live test (set `PROOFKIOSK_LIVE_RPC_URL`) executes the same `kiosk-watch` component against a public devnet node and has returned `paid` for a genuinely paid reference — chain state nobody in this repository authored. |
 | `finalized`-only paid verdict | ✅ **Runs today** | A payment verdict requires `finalized` and refuses `confirmed`/`processed` outright; the default is `finalized`. The weaker commitments stay legal for heartbeat mode. A paid verdict still requires the trusted host-local claim before actuation. |
-| SOP-driven relay actuation | 🚧 **Roadmap** | `kiosk-watch` emits structured JSON and the host-local trusted boundary can persist and claim an order. The exact pinned ZeroClaw headless path still does not dispatch ordinary plugin steps, and this repo ships no actuator driver, pulse adapter, delivery sensor, or signer. See [`sops/payment-loop/SOP.md`](sops/payment-loop/SOP.md). |
+| Trusted relay actuation | 🧪 **Device integration** | `scripts/actuator.mjs` accepts only a raw host-direct paid result plus its immutable order, holds a host-wide lock, checks cooldown before an exclusive claim, and pulses fixed BCM17 for 400 ms. Its tests use a fake GPIO executable; a real Pi/relay/load and delivery sensor are not yet evidenced. It records `pulse_completed`, never `delivered`. |
 | Attestation landing + finalizing on chain | 🚧 **Roadmap** | `kiosk-attest` builds a correct **unsigned** durable-nonce memo message (38 tests) and reports `signature_required`. Nothing in this repo signs or submits it, and no attestation has been observed landing on chain. One durable nonce supports one pending artifact at a time; a driver must serialize build → sign → submit → finalize. |
 | Structured charge/order handoff | ✅ **Runs today** | `kiosk-charge` returns versioned JSON with reference, item, amount, merchant, mint, timestamp, URL, and a separate human message. The on-chain `PKPAY1` memo binds reference + item, preventing equal-price SKU substitution. |
 | Trusted order persistence + host-local claim | ✅ **Runs today** | `trusted-charge-handoff.mjs` accepts only raw host-direct machine output, cross-checks charge/watch config and the exact Solana Pay URI, and durably snapshots reference, item, amount, recipient, mint, decimals, quote window, creation time, and expiry. `trusted-order-claim.mjs` requires the paid result to match every immutable economic/policy field and requires its landed block time to fall inside that quote before exclusive creation. Catalog changes cannot underpay an old order, and delayed observation can recover a payment that landed on time. This remains single-host at-most-once claiming, not exactly-once physical delivery. |
@@ -58,15 +60,16 @@ flowchart LR
     A --> WA["kiosk-watch · T0<br/>read-only RPC"]
     WA -->|"verify recipient + mint<br/>+ amount + reference/item memo<br/>+ finality"| SOL[("Solana")]
     M --- SOL
-    WA -. "paid + persisted order<br/>+ exclusive claim<br/><b>(roadmap — not wired)</b>" .-> R["GPIO relay<br/>→ item drops"]
+    WA -. "raw paid result + persisted order<br/>+ exclusive host claim<br/>+ fixed actuator" .-> R["GPIO pulse<br/>(delivery sensor still required)"]
     A --> AT["kiosk-attest · T1<br/>unsigned memo tx"]
     AT -->|"hash-chained<br/>durable-nonce memo"| S["External operator signer"]
     S -. "<b>(roadmap — never landed)</b>" .-> SOL
 ```
 
-Solid arrows run today; **dashed arrows are roadmap** (see the status table). Money never
-touches the agent: it flows customer wallet → merchant wallet directly. The agent prints
-the invoice and reads the chain; pulsing a pin off that verdict is the leg still to build.
+Solid arrows are plugin paths. The dashed hardware arrow crosses into a separate trusted
+host process, never a model-callable GPIO tool. The fixed actuator/claim path is shipped
+and fake-GPIO tested; real wiring and sensor-backed delivery require device evidence.
+Money never touches the agent: it flows customer wallet → merchant wallet directly.
 
 | Component | Tier | Question it answers | Network | Size |
 |---|---|---|---|---|
@@ -117,7 +120,7 @@ None of these is asserted on faith:
   than trivially pass.
 - The attestation transaction is asserted to contain **only** the Memo and System
   programs, by inspecting the compiled program-id set. A transfer is not expressible.
-- Fail-closed behavior is covered by 213 Rust tests with mocked RPC plus 12 Node tests at
+- Fail-closed behavior is covered by 213 Rust tests with mocked RPC plus 24 Node tests at
   the trusted host boundary. The exact pinned-host runtime test is a separate gate.
 
 ## Custody tiers, and why each component sits where it does
@@ -196,15 +199,16 @@ shipped.
 > verdict to match the immutable amount/recipient/mint/decimals/window and quote time,
 > and exclusively create one claim before actuation. A second claim fails. A
 > crash after that claim but before the pulse can still leave a paying customer with no
-> item, and there is no claimed → actuating → delivered recovery state machine or delivery
+> item. The bounded driver records claimed → actuating → pulse_completed, but there is no
+> sensor-backed delivered state or automatic crash-recovery policy. A delivery
 > sensor. Reasoning in [`sops/payment-loop/SOP.md`](sops/payment-loop/SOP.md).
 
-> **Honest status on rung 3: an integration contract, not a running loop.** The watcher
-> emits routeable JSON and the SOP validates, but exact pinned ZeroClaw headless execution
-> does not self-dispatch ordinary plugin steps. A driver must carry the generated order
-> values through `kiosk_watch`, consume the trusted host-local claim, invoke a safe pulse
-> adapter, and submit the fulfillment marker. `relay_pulse`, the driver, signer, sensor,
-> and physical recovery state machine are not shipped here. Full detail:
+> **Honest status on rung 3: an external trusted driver, not a headless SOP loop.** The
+> watcher emits routeable JSON and the SOP validates, but exact pinned ZeroClaw headless
+> execution does not self-dispatch ordinary plugin steps. `scripts/actuator.mjs` accepts
+> the raw host-direct result plus immutable order, enforces the host lock/cooldown and
+> exclusive claim, and emits a fixed BCM17 pulse. A hardware watchdog, delivery sensor,
+> signer/submission path, and automatic recovery state machine are not shipped. Full detail:
 > [`sops/payment-loop/SOP.md`](sops/payment-loop/SOP.md).
 
 ---
@@ -456,7 +460,7 @@ All green, **no network in any test**.
 | kiosk-watch | 76 | clean | clean | 390 KB ✔ <400 KB |
 | kiosk-attest | 38 | clean | clean | 418 KB ✔ <450 KB |
 | Node trusted-boundary | 12 | — | — | handoff + immutable quote/economics + exclusive claim |
-| **total** | **225** | **clean** | **clean** | plus separate exact-host runtime 1/1 and shell host-infra regression |
+| **total** | **230** | **clean** | **clean** | plus separate exact-host runtime 1/1 and shell host-infra regression |
 
 ## Repo map
 

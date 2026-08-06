@@ -10,7 +10,7 @@
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && /bin/pwd -P)"
 TARGET_DIR="${CARGO_TARGET_DIR:-/tmp/kiosk-verify}"
 
 log()  { printf '\033[1;36m[verify]\033[0m %s\n' "$*"; }

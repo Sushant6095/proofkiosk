@@ -58,8 +58,8 @@ Observed on this workstation:
   `plugins-wasm-cranelift` into `.build/zeroclaw-install`.
 - Rust/Cargo `1.97.1`, Solana CLI `4.1.1`, `spl-token-cli 5.6.1`, Node
   `24.10.0`, and the `wasm32-wasip2` target are present and executable.
-- All 225 repository tests pass: 213 Rust tests (80 core / 19 charge / 76 watch /
-  38 attest) plus 12 Node trusted-boundary tests. A separate exact pinned-host integration
+- All 230 repository tests pass: 213 Rust tests (80 core / 19 charge / 76 watch /
+  38 attest) plus 17 Node trusted-boundary/actuator tests. A separate exact pinned-host integration
   test passes. None of those contacts public Devnet, signs an attestation, or drives
   hardware.
 - `qrencode`, `wasmtime`, and `wasm-tools` are absent. Only `qrencode` is useful for
@@ -264,14 +264,14 @@ do
 done
 ```
 
-Expected Rust total: 213 tests. Then run the 12 trusted-boundary tests:
+Expected Rust total: 213 tests. Then run the 17 trusted-boundary/actuator tests:
 
 ```bash
 npm ci --ignore-scripts --no-audit --no-fund
 npm run test:handoff
 ```
 
-Expected repository total: 225 tests. Rust RPC responses are mocked; passing these tests
+Expected repository total: 230 tests. Rust RPC responses are mocked; passing these tests
 does not prove a public Devnet or successful RPC-backed ZeroClaw invocation. The exact
 host test in section 7 is counted separately.
 
@@ -935,7 +935,7 @@ Run the same charge → pay → watcher conversation. Capture the inbound chat, 
 arguments, sanitized config, tool result, Explorer signature, and merchant balance
 change. Never show the bot token or wallet secrets.
 
-## 21. Hardware inspection only
+## 21. Hardware inspection and actuator rehearsal
 
 These discovery commands require the future Pi/hardware-feature build from section 7;
 the primary laptop build will report that hardware support is unavailable:
@@ -955,11 +955,28 @@ i2cdetect -y 1
 
 Expected BME280 address: `0x76` or `0x77`.
 
-Do not run GPIO against a connected motor/solenoid. The repository does not implement
-the named relay/sensor tools, does not define active-high/active-low polarity, has no
-hardware one-shot, and its wiring guide contains an isolation/common-ground
-contradiction. First test a current-limited LED through a reviewed driver design, then
-add a fused, fail-safe actuator service outside model control.
+The repository now ships `scripts/actuator.mjs`, a host-side driver outside the model and
+WASM sandbox. It accepts only the raw host-direct paid result plus the persisted order,
+holds a host-wide lock, checks cooldown before consuming the exclusive claim, preflights
+LOW, pulses fixed BCM17 for 400 ms, and records `pulse_completed`. Its automated GPIO
+test uses a fake executable; that is not proof of a real relay or item delivery.
+
+First validate without consuming the claim or touching GPIO:
+
+```bash
+node scripts/actuator.mjs \
+  --reference "$REFERENCE" \
+  --watch-result "$PROOFKIOSK_LIVE_OUTPUT" \
+  --orders-dir "$PROOFKIOSK_ROOT/.proofkiosk/orders" \
+  --root "$PROOFKIOSK_ROOT" \
+  --dry-run
+```
+
+Do not energize a motor or solenoid until a current-limited LED test confirms relay
+polarity, BCM17 is inactive at boot, the load has a separate fused supply and flyback
+diode, and an emergency disconnect is reachable. The current driver assumes active-high
+logic and cannot prove an item arrived. Only a delivery sensor may promote
+`pulse_completed` to `delivered`.
 
 ## 22. Runtime negative-test checklist
 
@@ -1010,13 +1027,13 @@ cargo test --manifest-path plugins/kiosk-attest/Cargo.toml \
 
 ### P0—required before a physical production claim
 
-1. **Trusted driver + actuator recovery state machine.** The charge handoff and
-   single-host exclusive claim are shipped, but no driver captures the raw host-direct
-   paid result, claims the order, transitions claimed → actuating → delivered, enforces a
-   fixed pulse/cooldown, and recovers safely after a crash.
-2. **Actuator and delivery sensor.** `relay_pulse`, `bme280_read`, boot-safe GPIO policy,
-   one-shot hardware, and delivery sensing are not implemented. The wiring document is
-   a design guide, not evidence of a build.
+1. **Actuator recovery + delivery state machine.** The driver now captures trusted raw
+   evidence, locks the host, validates cooldown, claims once, and journals
+   claimed → actuating → pulse_completed. A crash after the exclusive claim still needs
+   operator recovery, and no delivery sensor can prove the item arrived.
+2. **Physical safety evidence.** Real Pi/relay/LED testing, active-polarity confirmation,
+   boot-safe output, separate fused load power, hardware one-shot/watchdog, emergency
+   disconnect, and a delivery/jam sensor remain required before a production claim.
 3. **Signer/submission firewall.** `kiosk_attest` stops at unsigned message bytes. A
    separate process must decode and constrain the message, sign, submit, wait for
    finalization, and serialize one pending artifact per durable nonce.
