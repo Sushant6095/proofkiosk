@@ -1,0 +1,60 @@
+.gitignore
+  s_d41ba85c4c4413::t_92cd73f6684185 11
+package.json
+  s_d41ba85c4c4413::t_7580d73946d9b7 8-10
+  s_971d225d9fab1e::t_3b6bae0dac81cb 31
+  s_d41ba85c4c4413::t_44f4ddccbf9a81 15-20,28-30,32-35
+site/three-scenes.css
+  s_d41ba85c4c4413::t_c4fba195f32db2 1-6,14-35,37-200,203-206,210-219
+  s_d41ba85c4c4413::t_dcca1bcaf6651c 209
+  s_d41ba85c4c4413::t_fd088058b0e6f5 7-10,13
+  s_d41ba85c4c4413::t_8944270a925a29 36
+  s_d41ba85c4c4413::t_de781ae661d714 11-12,201-202,207-208
+vercel.json
+  s_d41ba85c4c4413::t_049ff107785bbc 2-3
+site/main.jsx
+  s_d41ba85c4c4413::t_c4fba195f32db2 1-2,4-39,53-239,241-268,270-302,304-308,310-312,314,316-320,322-445,447-489
+  s_d41ba85c4c4413::t_de59a4193d611d 269,303
+  s_d41ba85c4c4413::t_8944270a925a29 315
+  s_d41ba85c4c4413::t_0847858a66b91e 3,40-52,313
+  s_d41ba85c4c4413::t_5b53c94a44d232 309,321
+  s_d41ba85c4c4413::t_dcca1bcaf6651c 446
+  s_d41ba85c4c4413::t_3d57f5bfd0d497 240
+vite.config.js
+  s_d41ba85c4c4413::t_4b385ac89a1791 14,23-24
+  s_d41ba85c4c4413::t_51ed988d1b42aa 10-11
+  s_d41ba85c4c4413::t_7580d73946d9b7 1-9,12-13,25-27
+  s_d41ba85c4c4413::t_25044acbca9665 15-22
+docs/index.html
+  s_d41ba85c4c4413::t_0847858a66b91e 319-320
+  s_d41ba85c4c4413::t_f45ad7293a03b7 372-374,435,464-465,467-478,480,535-536
+  s_d41ba85c4c4413::t_2dab2fa0245010 139,141-144,146,219,236-244,298-299,328,331
+  s_d41ba85c4c4413::t_e4d74570c15321 498,563,623-624,626-628,666,683,685,688
+  s_d41ba85c4c4413::t_3d57f5bfd0d497 405,463
+package-lock.json
+  s_d41ba85c4c4413::t_a0ea10296edf2c 11-12,24-401,404-410,1876-2049,2071-2623,2630-2904,2911-3033,3054-3082
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "8189050a4e1862f5e87388344083a754ece45920",
+  "prompts": {},
+  "sessions": {
+    "s_971d225d9fab1e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "019fd34f-7cbc-7da0-8649-ed3a208e5dc2",
+        "model": "unknown"
+      },
+      "human_author": "sushant6095 <sushant.jain@vyapar.com>"
+    },
+    "s_d41ba85c4c4413": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fd34f-7cbc-7da0-8649-ed3a208e5dc2",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "sushant6095 <sushant.jain@vyapar.com>"
+    }
+  }
+}
