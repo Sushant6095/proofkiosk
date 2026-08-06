@@ -1,0 +1,102 @@
+hardware/wiring.md
+  s_d41ba85c4c4413::t_853978ac9c52f8 6-10,25-27,82-86,117-119,130-139
+package.json
+  s_d4e40183daad6c::t_710f4d0e6e643e 12
+scripts/host-smoke.sh
+  s_d41ba85c4c4413::t_4410d86ea313d9 7
+scripts/kiosk-display.mjs
+  s_d4e40183daad6c::t_292442ae886e74 181-185
+  s_d4e40183daad6c::t_4cda4bde981dab 141
+  s_d4e40183daad6c::t_44801be6621514 40-76
+  s_d4e40183daad6c::t_2d5677ebacda62 1-33,35-39,77-101,103-105,107-125,127,131-140,142-160,163-172,176-177,187-201
+  s_d4e40183daad6c::t_52d01c74ed02c0 173-175
+  s_d4e40183daad6c::t_efc1a89d15d473 178-180,186
+  s_d4e40183daad6c::t_8cd61f65052508 106
+  s_d4e40183daad6c::t_8bd5130596299e 102
+  s_d4e40183daad6c::t_fbdd704e6d802b 161-162
+  s_d4e40183daad6c::t_9eb14dbb92d7a4 34
+  s_d4e40183daad6c::t_b096b9459f6ae7 126,128-130
+docs/ci.md
+  s_d41ba85c4c4413::t_d67f5d0e5d8860 12,24
+scripts/wasm-size.sh
+  s_d41ba85c4c4413::t_4410d86ea313d9 6
+scripts/demo-env.sh
+  s_d41ba85c4c4413::t_4410d86ea313d9 17
+scripts/build-handbook.mjs
+  s_d4e40183daad6c::t_ae8c37af2e25a8 20,22-33,263-267,309,443-444,463-464,475-477,479,487,494-495,498,504-505,508,513,535
+scripts/exact-host-runtime-smoke.sh
+  s_d41ba85c4c4413::t_4410d86ea313d9 9
+docs/DEVNET-E2E-RUNBOOK.md
+  s_d41ba85c4c4413::t_d67f5d0e5d8860 61-62,267,274
+  s_d41ba85c4c4413::t_f7728fe0c25e6f 938,958-979,1030-1036
+scripts/kiosk-display.html
+  s_d4e40183daad6c::t_7b2f27207793de 215,217-252
+  s_d4e40183daad6c::t_190ecd8e6c7a0e 317-362
+  s_d4e40183daad6c::t_250c488f61cfc7 279-286
+  s_d4e40183daad6c::t_257a48f35f2cb2 1-88,97-106,131-214,253-276,294-308,314-316,363-364,373-374,376-377,380,383-418,426-453
+  s_d4e40183daad6c::t_40fafc1de0206d 378-379,381
+  s_d4e40183daad6c::t_f5e3dc0e6d50aa 89-96
+  s_d4e40183daad6c::t_61b92b7130ad65 419-425
+  s_d4e40183daad6c::t_103bc227a81ba7 277-278,287-293
+  s_d4e40183daad6c::t_d70e5977c6f6c0 216
+  s_d4e40183daad6c::t_dc1382f4def06f 375
+  s_d4e40183daad6c::t_46a9c013ad2044 107-130
+  s_d4e40183daad6c::t_cf9e0dab23b003 382
+  s_d4e40183daad6c::t_f201ec0a13ed0d 309-313,365-372
+scripts/trusted-order-claim.test.mjs
+  s_d41ba85c4c4413::t_f7919cb6488ce3 7,113-121
+  s_d41ba85c4c4413::t_f4d0dbc5a6990b 122-124
+  s_d41ba85c4c4413::t_a6721edcee2c6b 125
+scripts/stage-plugin.sh
+  s_d41ba85c4c4413::t_4410d86ea313d9 12
+scripts/actuator.test.mjs
+  s_d41ba85c4c4413::t_aac1dba2cb62f8 38,40-43,87-120
+  s_d41ba85c4c4413::t_f7919cb6488ce3 1-37,39,44-71,73-86,121-124
+  s_d41ba85c4c4413::t_a7a569376fcb8c 72
+scripts/install-pinned-zeroclaw.sh
+  s_d41ba85c4c4413::t_4410d86ea313d9 8
+scripts/trace-to-raw.mjs
+  s_d4e40183daad6c::t_79ddff966a8f8b 1-71
+README.md
+  s_d41ba85c4c4413::t_d67f5d0e5d8860 37,463
+  s_d41ba85c4c4413::t_853978ac9c52f8 63,69-72,206-211
+  s_d4e40183daad6c::t_439071c40721d4 123
+  s_d41ba85c4c4413::t_f7728fe0c25e6f 202-203
+  s_d4e40183daad6c::t_a6beac9f8ae2fd 35
+  s_d4e40183daad6c::t_4aeb48b77f3387 34
+  s_d4e40183daad6c::t_99e375ce2d2d88 15-19
+scripts/verify-no-network.sh
+  s_d41ba85c4c4413::t_4410d86ea313d9 13
+scripts/trusted-order-claim.mjs
+  s_d41ba85c4c4413::t_f7919cb6488ce3 157,166-171
+scripts/kiosk-display.test.mjs
+  s_d4e40183daad6c::t_b6b6c955a6d0b5 1-40
+scripts/actuator.mjs
+  s_d41ba85c4c4413::t_f7919cb6488ce3 26,36-37,66,76,81-86,88,101-103,105-110,114-178,182-183
+  s_d41ba85c4c4413::t_d67f5d0e5d8860 19-20,52
+  s_d41ba85c4c4413::t_a7a569376fcb8c 179-180
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "1e5439160a5c6f96d49ac5131d2741846b47eb05",
+  "prompts": {},
+  "sessions": {
+    "s_d41ba85c4c4413": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fd34f-7cbc-7da0-8649-ed3a208e5dc2",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "sushant6095 <sushant.jain@vyapar.com>"
+    },
+    "s_d4e40183daad6c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5a5651de-86c4-4320-b1a9-751a8456ce34",
+        "model": "claude-opus-5"
+      },
+      "human_author": "sushant6095 <sushant.jain@vyapar.com>"
+    }
+  }
+}
