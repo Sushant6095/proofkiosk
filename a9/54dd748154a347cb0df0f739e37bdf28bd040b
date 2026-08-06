@@ -1,0 +1,59 @@
+README.md
+  s_d4e40183daad6c::t_6dd94c85531cb8 15-19,34-35,37,63,69-72,123,202-203,206-211,463
+docs/DEVNET-E2E-RUNBOOK.md
+  s_d4e40183daad6c::t_f4d58023fd602b 61-62,267,274,938,958-979,1030-1036
+docs/ci.md
+  s_d4e40183daad6c::t_1a3623ee50a3e0 12,24
+hardware/wiring.md
+  s_d4e40183daad6c::t_656123f4535c53 6-10,25-27,82-86,117-119,130-139
+package-lock.json
+  s_d4e40183daad6c::t_bcea52e7b6f495 11-12,24-401,404-410,1876-2049,2071-2623,2630-2904,2911-3033,3054-3082
+package.json
+  s_d4e40183daad6c::t_86f72c6bea1fd8 8-10,12,15-20,28-35
+scripts/actuator.mjs
+  s_d4e40183daad6c::t_c22dbecf42b1a9 19-20,26,36-37,52,66,76,81-86,88,101-103,105-110,114-180,182-183
+scripts/actuator.test.mjs
+  s_d4e40183daad6c::t_c9f1f6443b8796 1-124
+scripts/demo-env.sh
+  s_d4e40183daad6c::t_4deed14d51084f 17
+scripts/exact-host-runtime-smoke.sh
+  s_d4e40183daad6c::t_1564002ee01958 9
+scripts/host-smoke.sh
+  s_d4e40183daad6c::t_9e3cc6f6d5b881 7
+scripts/install-pinned-zeroclaw.sh
+  s_d4e40183daad6c::t_f2096f91610778 8
+scripts/kiosk-display.html
+  s_d4e40183daad6c::t_e2ad83a6d4793e 1-453
+scripts/kiosk-display.mjs
+  s_d4e40183daad6c::t_fec16bedd370c2 1-201
+scripts/kiosk-display.test.mjs
+  s_d4e40183daad6c::t_2e11226884e675 1-40
+scripts/stage-plugin.sh
+  s_d4e40183daad6c::t_215f38e28a2b15 12
+scripts/trace-to-raw.mjs
+  s_d4e40183daad6c::t_dde3f441f11a80 1-71
+scripts/trusted-order-claim.mjs
+  s_d4e40183daad6c::t_a86ca9fd10bfed 157,166-171
+scripts/trusted-order-claim.test.mjs
+  s_d4e40183daad6c::t_1cabc6320ad47e 7,113-125
+scripts/verify-no-network.sh
+  s_d4e40183daad6c::t_de55d86a8ed996 13
+scripts/wasm-size.sh
+  s_d4e40183daad6c::t_a25b847dcae9fc 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "a954dd748154a347cb0df0f739e37bdf28bd040b",
+  "prompts": {},
+  "sessions": {
+    "s_d4e40183daad6c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5a5651de-86c4-4320-b1a9-751a8456ce34",
+        "model": "unknown"
+      },
+      "human_author": "sushant6095 <sushant.jain@vyapar.com>"
+    }
+  }
+}
