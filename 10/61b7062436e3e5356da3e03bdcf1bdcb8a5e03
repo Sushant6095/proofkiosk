@@ -1,0 +1,36 @@
+BOUNTY-SUBMISSION.md
+  s_d41ba85c4c4413::t_26b75dd0222d46 3,13,32-34,36,54-55,73,188
+  s_d41ba85c4c4413::t_afc1fdfe825b09 31
+  s_d41ba85c4c4413::t_97a6b981703782 25,48-49,106
+  s_d41ba85c4c4413::t_814d5e910357b0 78
+  s_d41ba85c4c4413::t_fa93093b58804b 40,42,44-46
+  s_d41ba85c4c4413::t_41f92cf201dbd0 60,62,66,68
+  s_d41ba85c4c4413::t_c7baac40bd3260 56-59,61,63-65,67,69-72,80,82,84,86-91,93,95,97,99,101,107,109
+  s_d41ba85c4c4413::t_5ad2943b6b760a 1-2,4-12,14-24,26-30,35,37-39,41,43,47,50-53,74-77,79,81,83,85,92,94,96,98,100,102-105,108,110-187,189-300
+docs/ci.md
+  s_d41ba85c4c4413::t_26b75dd0222d46 12,24
+docs/DEVNET-E2E-RUNBOOK.md
+  s_d41ba85c4c4413::t_26b75dd0222d46 61-62,267,274
+RUN-LOCALLY-NOW.md
+  s_d41ba85c4c4413::t_97a6b981703782 1-98
+README.md
+  s_d41ba85c4c4413::t_41e7ab36789c99 218-222
+  s_d41ba85c4c4413::t_97a6b981703782 256
+  s_d41ba85c4c4413::t_26b75dd0222d46 467-468
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "1061b7062436e3e5356da3e03bdcf1bdcb8a5e03",
+  "prompts": {},
+  "sessions": {
+    "s_d41ba85c4c4413": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fd34f-7cbc-7da0-8649-ed3a208e5dc2",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "sushant6095 <sushant.jain@vyapar.com>"
+    }
+  }
+}
