@@ -17,6 +17,8 @@ README.md
   s_d41ba85c4c4413::t_41e7ab36789c99 218-222
   s_d41ba85c4c4413::t_97a6b981703782 256
   s_d41ba85c4c4413::t_26b75dd0222d46 467-468
+.gitignore
+  s_d41ba85c4c4413::t_7d7b2d6d7c43e4 26-31
 ---
 {
   "schema_version": "authorship/3.0.0",
