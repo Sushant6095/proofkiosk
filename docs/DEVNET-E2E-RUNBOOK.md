@@ -58,8 +58,8 @@ Observed on this workstation:
   `plugins-wasm-cranelift` into `.build/zeroclaw-install`.
 - Rust/Cargo `1.97.1`, Solana CLI `4.1.1`, `spl-token-cli 5.6.1`, Node
   `24.10.0`, and the `wasm32-wasip2` target are present and executable.
-- All 230 repository tests pass: 213 Rust tests (80 core / 19 charge / 76 watch /
-  38 attest) plus 17 Node trusted-boundary/actuator tests. A separate exact pinned-host integration
+- All 237 repository tests pass: 213 Rust tests (80 core / 19 charge / 76 watch /
+  38 attest) plus 24 Node trusted-boundary/actuator/display tests. A separate exact pinned-host integration
   test passes. None of those contacts public Devnet, signs an attestation, or drives
   hardware.
 - `qrencode`, `wasmtime`, and `wasm-tools` are absent. Only `qrencode` is useful for
@@ -264,14 +264,14 @@ do
 done
 ```
 
-Expected Rust total: 213 tests. Then run the 17 trusted-boundary/actuator tests:
+Expected Rust total: 213 tests. Then run the 24 trusted-boundary/actuator/display tests:
 
 ```bash
 npm ci --ignore-scripts --no-audit --no-fund
 npm run test:handoff
 ```
 
-Expected repository total: 230 tests. Rust RPC responses are mocked; passing these tests
+Expected repository total: 237 tests. Rust RPC responses are mocked; passing these tests
 does not prove a public Devnet or successful RPC-backed ZeroClaw invocation. The exact
 host test in section 7 is counted separately.
 

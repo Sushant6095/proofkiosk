@@ -28,6 +28,5 @@ superteam-*.txt
 # Internal rehearsal/prep material — not part of the published submission
 .superstack/
 deliverables/
-BOUNTY-SUBMISSION.md
 scripts/build-final-boss-demo-guide.py
 scripts/build-talk-track.mjs

@@ -215,6 +215,11 @@ shipped.
 
 ## Reproduce it in an evening
 
+For the shortest no-wallet, no-public-RPC, no-hardware verification path, start with
+[`RUN-LOCALLY-NOW.md`](RUN-LOCALLY-NOW.md). It builds the pinned plugin-capable host,
+loads all three WASM components, executes their valid paths through the real WIT boundary,
+accepts one exclusive claim, and rejects its replay.
+
 The compatible host is pinned to ZeroClaw commit
 [`e112ce6b5ccdac9e1cb166bab217e730dd7e24c2`](https://github.com/zeroclaw-labs/zeroclaw/commit/e112ce6b5ccdac9e1cb166bab217e730dd7e24c2),
 whose source identifies as **0.8.2**. Wall-clock is dominated by the host and component
@@ -248,7 +253,7 @@ for d in crates/kiosk-core plugins/kiosk-charge plugins/kiosk-watch plugins/kios
 done
 
 npm ci
-npm run test:handoff                 # 9 trusted-boundary tests
+npm run test:handoff                 # 24 trusted-boundary/actuator/display tests
 
 ./scripts/stage-plugin.sh          # -> staged/{kiosk-charge,kiosk-watch,kiosk-attest}/
 ```
@@ -459,8 +464,8 @@ All green, **no network in any test**.
 | kiosk-charge | 19 | clean | clean | 220 KB ✔ <250 KB |
 | kiosk-watch | 76 | clean | clean | 390 KB ✔ <400 KB |
 | kiosk-attest | 38 | clean | clean | 418 KB ✔ <450 KB |
-| Node trusted-boundary | 12 | — | — | handoff + immutable quote/economics + exclusive claim |
-| **total** | **230** | **clean** | **clean** | plus separate exact-host runtime 1/1 and shell host-infra regression |
+| Node trusted-boundary / actuator / display | 24 | — | — | handoff + immutable quote/economics + exclusive claim + kiosk display |
+| **total** | **237** | **clean** | **clean** | plus separate exact-host runtime 1/1 and shell host-infra regression |
 
 ## Repo map
 
