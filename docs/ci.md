@@ -9,7 +9,7 @@ Jobs receive only `contents: read` permission.
 The first Ubuntu 24.04 job has a 30-minute timeout and runs:
 
 1. Node 24.10.0 setup, `npm ci`, syntax validation of the independent Solana Pay
-   transfer harness, 17 trusted handoff/claim/actuator tests, and `npm audit` at high severity.
+   transfer harness, 24 trusted handoff/claim/actuator/display tests, and `npm audit` at high severity.
 2. Rust 1.97.1 with Clippy, rustfmt, and `wasm32-wasip2`.
 3. `bash -n scripts/*.sh`, `scripts/host-infra-regression.sh`, and
    `scripts/check-config.sh config/example.toml`.
@@ -21,7 +21,7 @@ The first Ubuntu 24.04 job has a 30-minute timeout and runs:
    418 KB / 450 KB.
 7. Compiled-artifact inspection proving `kiosk-charge` imports zero `wasi:http`.
 
-The Node and Rust suites contain 230 repository tests in total. The exact-host runtime
+The Node and Rust suites contain 237 repository tests in total. The exact-host runtime
 test below is a separate integration gate, not folded into that count.
 
 ## Exact pinned ZeroClaw job

@@ -23,3 +23,9 @@ docs-local/
 research/
 superteam-*.md
 superteam-*.txt
+
+# Internal rehearsal/prep material — not part of the published submission
+.superstack/
+deliverables/
+scripts/build-final-boss-demo-guide.py
+scripts/build-talk-track.mjs
